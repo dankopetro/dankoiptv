@@ -872,6 +872,14 @@
 
                 document.getElementById('targetStatus').innerText = "CONECTANDO...";
                 document.getElementById('progressBar').style.width = '0%';
+                
+                // Mostrar el cargador con el mensaje solicitado
+                const loader = document.getElementById('loader');
+                if (loader) {
+                    loader.classList.add('active');
+                    document.getElementById('loaderText').innerText = "⏳";
+                    document.getElementById('loaderSubtext').innerText = "Cargando Canal...";
+                }
             },
 
             isReconnecting: false,
@@ -931,6 +939,8 @@
                 v.addEventListener('playing', () => { 
                     this.isReconnecting = false;
                     document.getElementById('playIcon').className = 'ri-pause-circle-fill';
+                    const loader = document.getElementById('loader');
+                    if (loader) loader.classList.remove('active');
                 });
                 v.addEventListener('pause', () => {
                     document.getElementById('playIcon').className = 'ri-play-circle-fill';
