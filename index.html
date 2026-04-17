@@ -1074,43 +1074,49 @@
             },
 
             castCurrentStream() {
-                if (!this.currentTUrl) return;
+                if (typeof cast === 'undefined' || !cast.framework) {
+                    document.getElementById('targetStatus').innerText = "CAST NO LISTO";
+                    setTimeout(() => document.getElementById('targetStatus').innerText = "VIVO", 2000);
+                    return;
+                }
+
+                if (!this.currentTUrl) {
+                    alert("Primero carga un canal para transmitir.");
+                    return;
+                }
+
                 try {
-                    const castSession = cast.framework.CastContext.getInstance().getCurrentSession();
-                    if (castSession) {
-                        let contentType = 'video/mp4'; // Default
-                        const url = this.currentUrl.toLowerCase();
+                    const context = cast.framework.CastContext.getInstance();
+                    let session = context.getCurrentSession();
 
-                        if (url.includes('.m3u8')) contentType = 'application/x-mpegurl';
-                        else if (url.includes('.mpd')) contentType = 'application/dash+xml';
-                        else if (url.includes('.ts') || /\/\d+$/.test(url)) contentType = 'video/mp2t';
-
-                        const mediaInfo = new chrome.cast.media.MediaInfo(this.currentTUrl, contentType);
-                        
-                        // Metadatos para que la TV sepa que es IPTV
-                        mediaInfo.metadata = new chrome.cast.media.GenericMediaMetadata();
-                        mediaInfo.metadata.metadataType = chrome.cast.media.MetadataType.GENERIC;
-                        mediaInfo.metadata.title = "Danko IPTV Stream";
-                        mediaInfo.streamType = chrome.cast.media.StreamType.LIVE;
-
-                        const request = new chrome.cast.media.LoadRequest(mediaInfo);
-                        castSession.loadMedia(request).then(
-                            () => console.log('Casting iniciado con éxito'),
-                            (err) => {
-                                console.error('Error en Cast:', err);
-                                // Reintento con tipo generico si falla
-                                if (contentType !== 'video/mp4') {
-                                    mediaInfo.contentType = 'video/mp4';
-                                    castSession.loadMedia(new chrome.cast.media.LoadRequest(mediaInfo));
-                                }
-                            }
-                        );
-                    } else {
-                        // Si no hay sesion, invocar el dialogo de seleccion
-                        cast.framework.CastContext.getInstance().requestSession();
+                    if (!session) {
+                        // Abrir el selector de Google directamente
+                        context.requestSession().then(() => {
+                            // Re-ejecutar para cargar el medio una vez conectado
+                            setTimeout(() => this.castCurrentStream(), 1000);
+                        }).catch(err => console.log('Selector cerrado o error:', err));
+                        return;
                     }
+
+                    // Si ya hay sesion, mandamos el video
+                    let contentType = 'video/mp4';
+                    const url = this.currentUrl.toLowerCase();
+                    if (url.includes('.m3u8')) contentType = 'application/x-mpegurl';
+                    else if (url.includes('.ts') || /\/\d+$/.test(url)) contentType = 'video/mp2t';
+
+                    const mediaInfo = new chrome.cast.media.MediaInfo(this.currentTUrl, contentType);
+                    mediaInfo.metadata = new chrome.cast.media.GenericMediaMetadata();
+                    mediaInfo.metadata.title = "Danko IPTV";
+                    mediaInfo.streamType = chrome.cast.media.StreamType.LIVE;
+
+                    const request = new chrome.cast.media.LoadRequest(mediaInfo);
+                    session.loadMedia(request).then(
+                        () => console.log('Transmitiendo a TV...'),
+                        (err) => console.error('Error al cargar medio:', err)
+                    );
+
                 } catch(e) {
-                    console.error('Error crítico de API Cast:', e);
+                    console.error('Fallo en Cast:', e);
                 }
             }
         };
