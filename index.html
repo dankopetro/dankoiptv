@@ -577,38 +577,42 @@
                 }
             },
 
-            // FUNCION: TIRAR HACIA ABAJO PARA RECARGAR (Pull to Refresh Custom para Android)
+            // MOTOR DE RECARGA GLOBAL (Pull to Refresh para Android)
             setupPullToRefresh() {
-                const target = document.getElementById('sidebar'); // Escuchar en todo el lateral
-                const list = document.getElementById('chanList');
-                if (!target || !list) return;
                 let startY = 0;
-                let isAtTop = false;
+                let active = false;
 
-                target.addEventListener('touchstart', (e) => {
-                    // Solo activar si la lista de canales está arriba de todo
-                    if (list.scrollTop <= 0) {
+                window.addEventListener('touchstart', (e) => {
+                    // Solo si estamos en la parte superior de la ventana o de la lista
+                    const list = document.getElementById('chanList');
+                    const isAtTop = !list || list.scrollTop <= 0;
+                    
+                    if (isAtTop) {
                         startY = e.touches[0].clientY;
-                        isAtTop = true;
+                        active = true;
+                    } else {
+                        active = false;
                     }
                 }, { passive: true });
 
-                target.addEventListener('touchmove', (e) => {
-                    if (!isAtTop) return;
+                window.addEventListener('touchmove', (e) => {
+                    if (!active) return;
                     
                     const currentY = e.touches[0].clientY;
-                    const pullDistance = currentY - startY;
+                    const diff = currentY - startY;
 
-                    // Umbral más sensible: 100px
-                    if (pullDistance > 100) {
-                        isAtTop = false; 
+                    // Si arrastra más de 120px hacia abajo
+                    if (diff > 120) {
+                        active = false;
                         const loader = document.getElementById('loader');
                         if(loader) {
-                            loader.style.display = 'flex';
+                            loader.classList.add('active');
                             document.getElementById('loaderText').innerText = "↻";
-                            document.getElementById('loaderSubtext').innerText = "Refrescando...";
+                            document.getElementById('loaderSubtext').innerText = "Recargando...";
                         }
-                        setTimeout(() => window.location.reload(), 200);
+                        // Pequeña vibración si el equipo lo permite
+                        if (navigator.vibrate) navigator.vibrate(15);
+                        setTimeout(() => window.location.reload(), 150);
                     }
                 }, { passive: true });
             },
