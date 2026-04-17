@@ -1074,49 +1074,39 @@
             },
 
             castCurrentStream() {
-                if (typeof cast === 'undefined' || !cast.framework) {
-                    document.getElementById('targetStatus').innerText = "CAST NO LISTO";
-                    setTimeout(() => document.getElementById('targetStatus').innerText = "VIVO", 2000);
-                    return;
-                }
-
-                if (!this.currentTUrl) {
-                    alert("Primero carga un canal para transmitir.");
-                    return;
-                }
-
                 try {
                     const context = cast.framework.CastContext.getInstance();
                     let session = context.getCurrentSession();
 
+                    // Si no hay sesión, simplemente pedirla (abre el selector de Google)
                     if (!session) {
-                        // Abrir el selector de Google directamente
                         context.requestSession().then(() => {
-                            // Re-ejecutar para cargar el medio una vez conectado
-                            setTimeout(() => this.castCurrentStream(), 1000);
-                        }).catch(err => console.log('Selector cerrado o error:', err));
+                            // Una vez conectado, esperamos un segundo y mandamos el video
+                            setTimeout(() => this.castCurrentStream(), 1500);
+                        }).catch(err => console.log("Cerrado:", err));
                         return;
                     }
 
-                    // Si ya hay sesion, mandamos el video
-                    let contentType = 'video/mp4';
-                    const url = this.currentUrl.toLowerCase();
-                    if (url.includes('.m3u8')) contentType = 'application/x-mpegurl';
-                    else if (url.includes('.ts') || /\/\d+$/.test(url)) contentType = 'video/mp2t';
-
-                    const mediaInfo = new chrome.cast.media.MediaInfo(this.currentTUrl, contentType);
+                    // Enviar el video (Usamos la URL con proxy que es HTTPS y compatible)
+                    const mediaInfo = new chrome.cast.media.MediaInfo(this.currentTUrl, 'video/mp4');
+                    mediaInfo.streamType = chrome.cast.media.StreamType.LIVE;
                     mediaInfo.metadata = new chrome.cast.media.GenericMediaMetadata();
                     mediaInfo.metadata.title = "Danko IPTV";
-                    mediaInfo.streamType = chrome.cast.media.StreamType.LIVE;
 
                     const request = new chrome.cast.media.LoadRequest(mediaInfo);
                     session.loadMedia(request).then(
-                        () => console.log('Transmitiendo a TV...'),
-                        (err) => console.error('Error al cargar medio:', err)
+                        () => console.log('Video enviado con éxito'),
+                        (err) => {
+                            // Si falla como mp4, intentamos como mpegurl (HLS)
+                            console.log('Error 1, reintentando...', err);
+                            mediaInfo.contentType = 'application/x-mpegurl';
+                            session.loadMedia(new chrome.cast.media.LoadRequest(mediaInfo));
+                        }
                     );
-
                 } catch(e) {
-                    console.error('Fallo en Cast:', e);
+                    console.error("Error en Cast:", e);
+                    // Fallback: abrir selector nativo si el framework falla
+                    cast.framework.CastContext.getInstance().requestSession();
                 }
             }
         };
