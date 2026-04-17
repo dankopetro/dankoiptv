@@ -341,8 +341,9 @@
             .main-container { flex-direction: column-reverse; }
             
             .video-area { 
-                height: 42vh; /* Un poquito más de altura para un encuadre perfecto */
-                min-height: 250px;
+                height: auto !important; /* El video dicta la altura */
+                aspect-ratio: 16 / 9; /* Relación de aspecto perfecta de TV */
+                min-height: auto;
                 padding: 0 !important; 
                 flex: none; 
                 border-bottom: 2px solid var(--primary);
@@ -365,10 +366,19 @@
             
             .sidebar { 
                 width: 100%; 
-                height: calc(100vh - 42vh - 50px) !important;
-                flex: none;
+                height: calc(100vh - 50px - 56.25vw) !important; /* 56.25vw es el alto exacto de un video 16:9 */
+                flex: 1;
                 border-right: none; 
             }
+
+            /* LISTA MAS PEQUEÑA PARA MOSTRAR MAS COSAS */
+            .channel-item {
+                padding: 6px 10px !important;
+                gap: 10px !important;
+            }
+            .channel-name { font-size: 0.85rem !important; }
+            .channel-category { font-size: 0.7rem !important; }
+            .channel-logo { width: 35px !important; height: 35px !important; }
 
             .glass-header { 
                 flex-direction: row; /* Logo y buscador en la misma linea */
