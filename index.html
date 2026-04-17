@@ -949,8 +949,10 @@
                     document.getElementById('targetStatus').innerText = "BUFFERING...";
                 });
 
-                // GESTIÓN DE ERRORES: Aviso si el canal no está disponible
+                // GESTIÓN DE ERRORES: Aviso si el canal no está disponible (con filtro para evitar falsos positivos)
                 v.addEventListener('error', () => {
+                    if (!v.src || v.src === window.location.href) return; // Evitar disparar si no hay video cargando
+                    
                     const loader = document.getElementById('loader');
                     if (loader) {
                         loader.classList.add('active');
