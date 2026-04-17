@@ -37,10 +37,14 @@
             font-family: 'Outfit', sans-serif;
         }
 
+        html, body {
+            overscroll-behavior-y: auto; /* Permite el gesto nativo de recargar en Android */
+        }
+
         body {
             background-color: var(--bg-color);
             color: var(--text-main);
-            height: 100dvh; /* dvh accounts for browser UI perfectly */
+            height: 100dvh; 
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -575,41 +579,38 @@
 
             // FUNCION: TIRAR HACIA ABAJO PARA RECARGAR (Pull to Refresh Custom para Android)
             setupPullToRefresh() {
+                const target = document.getElementById('sidebar'); // Escuchar en todo el lateral
                 const list = document.getElementById('chanList');
-                if (!list) return;
+                if (!target || !list) return;
                 let startY = 0;
                 let isAtTop = false;
 
-                list.addEventListener('touchstart', (e) => {
+                target.addEventListener('touchstart', (e) => {
+                    // Solo activar si la lista de canales está arriba de todo
                     if (list.scrollTop <= 0) {
                         startY = e.touches[0].clientY;
                         isAtTop = true;
-                    } else {
-                        isAtTop = false;
                     }
                 }, { passive: true });
 
-                list.addEventListener('touchmove', (e) => {
+                target.addEventListener('touchmove', (e) => {
                     if (!isAtTop) return;
                     
                     const currentY = e.touches[0].clientY;
                     const pullDistance = currentY - startY;
 
-                    // Si tiró más de 140 pixeles hacia abajo firmemente
-                    if (pullDistance > 140) {
-                        isAtTop = false; // Bloquear para que no triggereé múltiples veces
+                    // Umbral más sensible: 100px
+                    if (pullDistance > 100) {
+                        isAtTop = false; 
                         const loader = document.getElementById('loader');
                         if(loader) {
                             loader.style.display = 'flex';
                             document.getElementById('loaderText').innerText = "↻";
-                            document.getElementById('loaderSubtext').innerText = "Refrescando señales...";
+                            document.getElementById('loaderSubtext').innerText = "Refrescando...";
                         }
-                        // Recargar página emulando el comportamiento nativo
-                        setTimeout(() => window.location.reload(), 150);
+                        setTimeout(() => window.location.reload(), 200);
                     }
                 }, { passive: true });
-                
-                list.addEventListener('touchend', () => isAtTop = false);
             },
 
             async processInput() {
