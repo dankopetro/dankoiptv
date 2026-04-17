@@ -40,7 +40,7 @@
         body {
             background-color: var(--bg-color);
             color: var(--text-main);
-            height: 100vh;
+            height: 100dvh; /* dvh accounts for browser UI perfectly */
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -220,6 +220,7 @@
             align-items: center;
             justify-content: center;
             background: #000;
+            overflow: hidden;
         }
 
         video {
@@ -614,6 +615,7 @@
                 } else {
                     document.getElementById('sidebar').style.display = 'none';
                     this.playStream(input, false); 
+                    this.showControls(); // Forzar controles si es un stream directo
                 }
             },
 
@@ -930,20 +932,21 @@
             },
 
             /* LOGICA DE CONTROLES GRAFICOS Y CHROMECAST */
-            setupControlsUI() {
-                // Para mobile, mostrar controles al tocar la pantalla un ratito
+            hideTimeout: null,
+            showControls() {
                 const wrapper = document.getElementById('videoWrapper');
-                let hideTimeout;
-                const showControls = () => {
-                    wrapper.classList.add('force-show');
-                    clearTimeout(hideTimeout);
-                    if (!this.videoEl.paused) {
-                        hideTimeout = setTimeout(() => wrapper.classList.remove('force-show'), 3000);
-                    }
-                };
+                wrapper.classList.add('force-show');
+                clearTimeout(this.hideTimeout);
+                if (!this.videoEl.paused) {
+                    this.hideTimeout = setTimeout(() => wrapper.classList.remove('force-show'), 3500);
+                }
+            },
+
+            setupControlsUI() {
+                const wrapper = document.getElementById('videoWrapper');
                 
-                wrapper.addEventListener('mousemove', showControls);
-                wrapper.addEventListener('touchstart', showControls);
+                wrapper.addEventListener('mousemove', () => this.showControls());
+                wrapper.addEventListener('touchstart', () => this.showControls());
                 
                 // Que el click directo pause o reanude
                 this.videoEl.addEventListener('click', () => this.togglePlay());
