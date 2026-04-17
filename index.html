@@ -871,32 +871,45 @@
                     const cur = v.currentTime;
                     const dur = v.duration;
                     
-                    if (dur && isFinite(dur) && dur > 0) {
-                        // VOD o Catch-Up (Tiene duración)
+                    // Cálculo de cuánto video está físicamente cargado adelante del punto actual
+                    let bufferedAhead = 0;
+                    if (v.buffered.length > 0) {
+                        for (let i = 0; i < v.buffered.length; i++) {
+                            if (cur >= v.buffered.start(i) && cur <= v.buffered.end(i) + 0.5) {
+                                bufferedAhead = v.buffered.end(i) - cur;
+                                break;
+                            }
+                        }
+                        // Si el buffer va mas adelantado o hubo un gap, lo buscamos
+                        if (bufferedAhead === 0) {
+                            bufferedAhead = v.buffered.end(v.buffered.length - 1) - cur;
+                        }
+                    }
+                    if (bufferedAhead < 0) bufferedAhead = 0;
+
+                    const isVod = (dur && isFinite(dur) && dur > 120); // +2 mins asumimos que es Pelicula VOD
+
+                    if (isVod) {
                         document.getElementById('currentTime').innerText = formatTime(cur);
                         document.getElementById('totalTime').innerText = formatTime(dur);
-                        document.getElementById('targetStatus').innerText = "REPRODUCIENDO";
+                        document.getElementById('targetStatus').innerText = "PELÍCULA";
+                        document.getElementById('progressBar').style.width = ((cur / dur) * 100) + '%';
+                    } else {
+                        // MODO DIRECTO (Live) - Barra dinámica de buffer
+                        document.getElementById('currentTime').innerText = formatTime(cur);
+                        document.getElementById('totalTime').innerText = `-${bufferedAhead.toFixed(1)}s`;
+                        document.getElementById('targetStatus').innerText = "🔴 VIVO";
                         
-                        const percentage = (cur / dur) * 100;
+                        // La barra muestra visualmente hasta 30 segundos
+                        let percentage = (bufferedAhead / 30) * 100;
+                        if (percentage > 100) percentage = 100;
                         document.getElementById('progressBar').style.width = percentage + '%';
 
-                        // EL BUFFER TERMINA: Regla estricta de reconexión cuando quedan 0.75 segundos
-                        // IMPORTANTE: dur > 3 evita reconectar si el reproductor está recién leyendo el primer micro-chunk de buffer.
-                        const remaining = dur - cur;
-                        if (dur > 3 && remaining <= 0.75 && remaining > 0 && !this.isReconnecting) {
-                            console.log(`⏱️ Quedan ${remaining.toFixed(2)}s. Reconectando automático (Regla 0.75s)`);
+                        // Regla estricta: si el buffer que queda adelante cae a 0.75s, reconecta
+                        if (bufferedAhead <= 0.75 && cur > 1.5 && !this.isReconnecting) {
+                            console.log(`⏱️ Buffer vacío crítico (${bufferedAhead.toFixed(2)}s). Reconectando automático...`);
                             this.triggerReconnect();
                         }
-                    } else {
-                        // DIRECTO / LIVE STREAM (No tiene duración real en algunos protocolos)
-                        // Para en vivo engañamos mostrando el tiempo visto
-                        document.getElementById('currentTime').innerText = formatTime(cur);
-                        document.getElementById('totalTime').innerText = "EN VIVO";
-                        document.getElementById('targetStatus').innerText = "🔴 DIRECTO";
-                        document.getElementById('progressBar').style.width = '100%';
-                        
-                        // En vivo no hay "final", pero si detectamos que el buffer vació drásticamente
-                        // o entra en stalled, haríamos el reconnect ahi (opcional)
                     }
                 });
 
