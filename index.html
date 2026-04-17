@@ -787,8 +787,7 @@
                 });
             },
 
-            // REPRODUCTOR UNIVERSAL
-            playStream(url, forceDirect = false, isFallback = false) {
+            playStream(url, forceDirect = false) {
                 this.currentUrl = url;
                 const v = this.videoEl;
 
@@ -797,24 +796,15 @@
                     try { this.playerInstance.reset(); } catch(e){} 
                     this.playerInstance = null;
                 }
-
-                // PLAN B: EL TRUCO DE LOS BALDES (M3U8) - Solo si no es un reintento por fallo
-                let targetUrl = url;
-                let isXtreamNative = /\/([^\/]+)\/([^\/]+)\/(\d+)(?:\.ts)?$/.test(url);
-                let useHlsBuckets = isXtreamNative && !forceDirect && !isFallback;
-
-                if (useHlsBuckets) {
-                    targetUrl = url.replace(/\/([^\/]+)\/([^\/]+)\/(\d+)(?:\.ts)?$/, '/live/$1/$2/$3.m3u8');
-                    console.log('🔄 Intentando Baldes HLS:', targetUrl);
-                }
-
-                const isMpd = targetUrl.includes('.mpd');
-                const isM3u8 = targetUrl.includes('.m3u8');
-                const isTs = targetUrl.toLowerCase().endsWith('.ts');
+                
+                const isMpd = url.includes('.mpd');
+                const isM3u8 = url.includes('.m3u8');
+                const isXtreamNative = /\/\d+$/.test(url);
+                const isTs = url.toLowerCase().endsWith('.ts') || isXtreamNative;
 
                 const tunnelPrefix = "https://api.codetabs.com/v1/proxy/?quest=";
-                const needsProxy = !forceDirect && (targetUrl.startsWith('http:'));
-                const tUrl = needsProxy ? (tunnelPrefix + encodeURIComponent(targetUrl)) : targetUrl;
+                const needsProxy = !forceDirect && (url.startsWith('http:'));
+                const tUrl = needsProxy ? (tunnelPrefix + encodeURIComponent(url)) : url;
                 this.currentTUrl = tUrl; 
                 
                 if (isMpd && window.dashjs) {
@@ -822,68 +812,15 @@
                     this.playerInstance.initialize(v, tUrl, true);
                 } 
                 else if (isM3u8 && window.Hls && Hls.isSupported()) {
-                    
-                    class M3U8ProxyLoader extends Hls.DefaultConfig.loader {
-                        constructor(config) {
-                            super(config);
-                            const load = this.load.bind(this);
-                            this.load = function (ctx, cfg, callbacks) {
-                                if (needsProxy && (ctx.type === 'manifest' || ctx.type === 'level' || ctx.type === 'fragment')) {
-                                    const onSuccess = callbacks.onSuccess;
-                                    callbacks.onSuccess = function(res, stats, context, networkDetails) {
-                                        let originalUrl = context.url;
-                                        const match = context.url.match(/quest=(.*)/);
-                                        if(match) originalUrl = decodeURIComponent(match[1]);
-                                        
-                                        if (res.data && typeof res.data === 'string' && ctx.type !== 'fragment') {
-                                            const baseUrl = originalUrl.substring(0, originalUrl.lastIndexOf('/') + 1);
-                                            let lines = res.data.split(/\r?\n/);
-                                            for(let i=0; i<lines.length; i++) {
-                                                let ln = lines[i].trim();
-                                                if(ln && !ln.startsWith('#')) {
-                                                    if(!ln.startsWith('http')) {
-                                                        if(ln.startsWith('/')) {
-                                                            const originMatch = originalUrl.match(/^(https?:\/\/[^\/]+)/);
-                                                            ln = (originMatch ? originMatch[1] : baseUrl.replace(/\/live\/.*$/, '')) + ln;
-                                                        } else {
-                                                            ln = baseUrl + ln;
-                                                        }
-                                                    }
-                                                    lines[i] = tunnelPrefix + encodeURIComponent(ln);
-                                                }
-                                            }
-                                            res.data = lines.join('\n');
-                                        }
-                                        onSuccess(res, stats, context, networkDetails);
-                                    };
-                                }
-                                load(ctx, cfg, callbacks);
-                            };
-                        }
-                    }
-
-                    this.playerInstance = new Hls({ 
-                        maxBufferLength: 40,
-                        pLoader: needsProxy ? M3U8ProxyLoader : Hls.DefaultConfig.loader,
-                        enableWorker: true
-                    });
-
-                    // Sistema de Emergencia: Si HLS falla, vuelve a MpegTS
-                    this.playerInstance.on(Hls.Events.ERROR, (event, data) => {
-                        if (data.fatal && useHlsBuckets) {
-                            console.warn("⚠️ Baldes HLS Fallaron. Activando Emergencia MpegTS...");
-                            this.playStream(url, false, true);
-                        }
-                    });
-
+                    this.playerInstance = new Hls({ maxBufferLength: 45 });
                     this.playerInstance.loadSource(tUrl);
                     this.playerInstance.attachMedia(v);
                     this.playerInstance.on(Hls.Events.MANIFEST_PARSED, () => v.play());
                 }
-                else if (window.mpegts && (isTs || isXtreamNative)) {
+                else if (window.mpegts && isTs) {
                     this.playerInstance = mpegts.createPlayer({
                         type: 'm2ts',
-                        isLive: false, // Falso permite que el reproductor bufferee agresivamente hacia adelante
+                        isLive: false,
                         url: tUrl
                     }, {
                         enableWorker: true,
@@ -896,11 +833,9 @@
                     this.playerInstance.attachMediaElement(v);
                     this.playerInstance.load();
                     
-                    // RECONEXION ACTIVA EN CASO DE ERRORES (Como pediste, cuando acabe su buffer)
-                    // Atrapa errores o el final de la carga e instantaneamente relanza el túnel
                     this.playerInstance.on(mpegts.Events.ERROR, (e) => {
                         console.warn("Mpegts Error/Corte. Relanzando reconexion automatica...");
-                        setTimeout(() => this.triggerReconnect(), 700);
+                        this.triggerReconnect();
                     });
 
                     this.playerInstance.play().catch(() => {
@@ -910,6 +845,7 @@
                     });
                 }
                 else {
+                    v.style.display = "block";
                     v.src = tUrl;
                     v.play();
                 }
@@ -918,7 +854,17 @@
                 document.getElementById('progressBar').style.width = '0%';
             },
 
-            // LOGICA DE TIEMPO Y RECONEXION A LOS 0.7 SEGUNDOS
+            isReconnecting: false,
+            triggerReconnect() {
+                if (this.isReconnecting) return;
+                this.isReconnecting = true;
+                console.log("🔄 Trigger Reconexion Activa...");
+                setTimeout(() => {
+                    this.isReconnecting = false;
+                    this.playStream(this.currentUrl, false);
+                }, 700);
+            },
+
             setupTimeUpdate() {
                 const v = this.videoEl;
                 
@@ -933,8 +879,7 @@
                 v.addEventListener('timeupdate', () => {
                     const cur = v.currentTime;
                     const dur = v.duration;
-                    
-                    const isVod = (dur && isFinite(dur) && dur > 120); // +2 mins asumimos que es Pelicula VOD
+                    const isVod = (dur && isFinite(dur) && dur > 120);
 
                     if (isVod) {
                         document.getElementById('currentTime').innerText = formatTime(cur);
@@ -943,27 +888,19 @@
                         document.getElementById('progressBar').style.width = ((cur / dur) * 100) + '%';
                     } 
                     else if (dur && isFinite(dur) && dur > 0) {
-                        // FLUJO TS VÍA PROXY (Chunks de aprox ~30s gracias a isLive=false)
-                        // Aquí aplicamos tu lógica mágica exacta: calcular el sobrante y reconectar en 0.75
                         const remaining = dur - cur;
-                        
                         document.getElementById('currentTime').innerText = "🔴 DIRECTO";
-                        // Visualización exacta solicitada: Mostrar cuenta regresiva en negativo
                         document.getElementById('totalTime').innerText = `-${remaining.toFixed(2)}s`;
                         document.getElementById('targetStatus').innerText = "VIVO";
-                        
-                        // La barra achicándose visualmente
                         const percentage = (remaining / dur) * 100;
                         document.getElementById('progressBar').style.width = Math.max(0, percentage) + '%';
 
-                        // Reconexión exacta casi donde se corta
                         if (dur > 3 && remaining <= 0.75 && remaining > 0 && !this.isReconnecting) {
                             console.log(`⏱️ Queda ${remaining.toFixed(2)}s del bloque. Reconectando automático...`);
                             this.triggerReconnect();
                         }
                     } 
                     else {
-                        // LIVE STREAM FALLBACK (Sin duración reportada)
                         document.getElementById('currentTime').innerText = formatTime(cur);
                         document.getElementById('totalTime').innerText = "LIVE";
                         document.getElementById('targetStatus').innerText = "🔴 VIVO";
@@ -979,30 +916,8 @@
                     document.getElementById('playIcon').className = 'ri-play-circle-fill';
                 });
                 v.addEventListener('waiting', () => document.getElementById('targetStatus').innerText = "BUFFERING...");
-                
-                // Reconexión agresiva si el flujo se corta abruptamente
-                v.addEventListener('ended', () => {
-                    console.warn('⚠️ Señal terminada/cortada (EOF). Reenganchando en 0.7s...');
-                    setTimeout(() => this.triggerReconnect(), 700);
-                });
-                v.addEventListener('error', () => {
-                    if (!this.isReconnecting) {
-                        console.warn('⚠️ Error Nativo de conexión de video. Reenganchando en 0.7s...');
-                        setTimeout(() => this.triggerReconnect(), 700);
-                    }
-                });
             },
 
-            isReconnecting: false,
-            triggerReconnect() {
-                this.isReconnecting = true;
-                document.getElementById('targetStatus').innerText = "RECONECTANDO...";
-                if (this.currentUrl) {
-                    this.playStream(this.currentUrl, false);
-                }
-            },
-
-            /* LOGICA DE CONTROLES GRAFICOS Y CHROMECAST */
             hideTimeout: null,
             showControls() {
                 const wrapper = document.getElementById('videoWrapper');
@@ -1015,11 +930,8 @@
 
             setupControlsUI() {
                 const wrapper = document.getElementById('videoWrapper');
-                
                 wrapper.addEventListener('mousemove', () => this.showControls());
                 wrapper.addEventListener('touchstart', () => this.showControls());
-                
-                // Que el click directo pause o reanude
                 this.videoEl.addEventListener('click', () => this.togglePlay());
             },
 
@@ -1048,20 +960,16 @@
                 const fsIco = document.getElementById('fullscreenIcon');
                 
                 if (!document.fullscreenElement) {
-                    // Entrar a pantalla completa
                     if (wrapper.requestFullscreen) {
                         await wrapper.requestFullscreen();
                         fsIco.className = 'ri-fullscreen-exit-line';
-                        
-                        // Si estamos en movil, rotamos la pantalla a Horizontal (Landscape) de manera forzada!
                         try {
                             if (screen.orientation && screen.orientation.lock) {
                                 await screen.orientation.lock('landscape');
                             }
-                        } catch(e) { console.log('Rotación bloqueada por el navegador', e); }
+                        } catch(e) {}
                     }
                 } else {
-                    // Salir
                     if (document.exitFullscreen) {
                         await document.exitFullscreen();
                         fsIco.className = 'ri-fullscreen-line';
@@ -1087,7 +995,6 @@
                 try {
                     const castSession = cast.framework.CastContext.getInstance().getCurrentSession();
                     if (castSession) {
-                        // Pasarle el link puro y duro que ya fue procesado a Chromecast
                         const mediaInfo = new chrome.cast.media.MediaInfo(this.currentTUrl, 'video/mp4');
                         const request = new chrome.cast.media.LoadRequest(mediaInfo);
                         castSession.loadMedia(request).then(
@@ -1101,7 +1008,6 @@
             }
         };
 
-        // Arracar
         app.init();
     </script>
 </body>
