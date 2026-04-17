@@ -243,8 +243,25 @@
             z-index: 50;
         }
 
-        .video-wrapper:hover .custom-controls, .video-wrapper.force-show .custom-controls {
+        /* Al entrar en pantalla completa, envolvemos todo */
+        :fullscreen video {
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .video-wrapper.hide-cursor {
+            cursor: none;
+        }
+
+        .video-wrapper .custom-controls {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease;
+        }
+
+        .video-wrapper.force-show .custom-controls {
             opacity: 1;
+            pointer-events: auto;
         }
 
         /* Progress Bar */
@@ -922,9 +939,13 @@
             showControls() {
                 const wrapper = document.getElementById('videoWrapper');
                 wrapper.classList.add('force-show');
+                wrapper.classList.remove('hide-cursor');
                 clearTimeout(this.hideTimeout);
                 if (!this.videoEl.paused) {
-                    this.hideTimeout = setTimeout(() => wrapper.classList.remove('force-show'), 3500);
+                    this.hideTimeout = setTimeout(() => {
+                        wrapper.classList.remove('force-show');
+                        wrapper.classList.add('hide-cursor');
+                    }, 3500);
                 }
             },
 
