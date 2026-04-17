@@ -513,10 +513,10 @@
                         <div class="controls-right">
                             <span id="targetStatus">🔴 EN VIVO</span>
                             <!-- Botón de chromecast nativo si la extension GoogleCast está disponible -->
-                            <button class="control-btn" onclick="app.castCurrentStream()" title="Transmitir a TV" style="display: flex; align-items: center;">
-                                <i class="ri-cast-line"></i>
-                            </button>
-                            <google-cast-launcher id="gcastLauncher" style="width:0;height:0;opacity:0;"></google-cast-launcher>
+                            <!-- BOTÓN OFICIAL DE GOOGLE CAST (INFALIBLE) -->
+                            <div class="control-btn cast-container" style="display: flex; align-items: center; justify-content: center; position: relative;">
+                                <google-cast-launcher style="width: 24px; height: 24px; cursor: pointer;"></google-cast-launcher>
+                            </div>
                             <button class="control-btn" onclick="app.toggleFullscreen()" title="Pantalla Completa">
                                 <i class="ri-fullscreen-line" id="fullscreenIcon"></i>
                             </button>
@@ -1071,60 +1071,37 @@
                 if (isFinite(this.videoEl.duration) && this.videoEl.duration > 0) {
                     this.videoEl.currentTime = pos * this.videoEl.duration;
                 }
-            },
-
-            castCurrentStream() {
-                try {
-                    const context = cast.framework.CastContext.getInstance();
-                    let session = context.getCurrentSession();
-
-                    // Si no hay sesión, simplemente pedirla (abre el selector de Google)
-                    if (!session) {
-                        context.requestSession().then(() => {
-                            // Una vez conectado, esperamos un segundo y mandamos el video
-                            setTimeout(() => this.castCurrentStream(), 1500);
-                        }).catch(err => console.log("Cerrado:", err));
-                        return;
-                    }
-
-                    // Enviar el video (Usamos la URL con proxy que es HTTPS y compatible)
-                    const mediaInfo = new chrome.cast.media.MediaInfo(this.currentTUrl, 'video/mp4');
-                    mediaInfo.streamType = chrome.cast.media.StreamType.LIVE;
-                    mediaInfo.metadata = new chrome.cast.media.GenericMediaMetadata();
-                    mediaInfo.metadata.title = "Danko IPTV";
-
-                    const request = new chrome.cast.media.LoadRequest(mediaInfo);
-                    session.loadMedia(request).then(
-                        () => console.log('Video enviado con éxito'),
-                        (err) => {
-                            // Si falla como mp4, intentamos como mpegurl (HLS)
-                            console.log('Error 1, reintentando...', err);
-                            mediaInfo.contentType = 'application/x-mpegurl';
-                            session.loadMedia(new chrome.cast.media.LoadRequest(mediaInfo));
-                        }
-                    );
-                } catch(e) {
-                    console.error("Error en Cast:", e);
-                    // Fallback: abrir selector nativo si el framework falla
-                    cast.framework.CastContext.getInstance().requestSession();
-                }
             }
         };
 
         app.init();
 
-        // INICIALIZACION CRITICA DE GOOGLE CAST
+        // MOTOR DE GOOGLE CAST (BORRÓN Y CUENTA NUEVA)
         window.__onGCastApiAvailable = function(isAvailable) {
             if (isAvailable) {
-                try {
-                    cast.framework.CastContext.getInstance().setOptions({
-                        receiverApplicationId: chrome.cast.media.DEFAULT_RECEIVER_APP_ID,
-                        autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
-                    });
-                    console.log('✅ Google Cast SDK listo');
-                } catch(e) {
-                    console.error('Error inicializando Cast:', e);
-                }
+                const context = cast.framework.CastContext.getInstance();
+                context.setOptions({
+                    receiverApplicationId: chrome.cast.media.DEFAULT_RECEIVER_APP_ID,
+                    autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
+                });
+
+                // Escuchar cuando el usuario elige una TV y se conecta
+                context.addEventListener(cast.framework.CastContextEventType.SESSION_STATE_CHANGED, (event) => {
+                    if (event.sessionState === cast.framework.SessionState.SESSION_STARTED) {
+                        const session = context.getCurrentSession();
+                        if (session && app.currentTUrl) {
+                            console.log("Cargando video en la TV seleccionada...");
+                            
+                            const mediaInfo = new chrome.cast.media.MediaInfo(app.currentTUrl, 'video/mp4');
+                            mediaInfo.streamType = chrome.cast.media.StreamType.LIVE;
+                            mediaInfo.metadata = new chrome.cast.media.GenericMediaMetadata();
+                            mediaInfo.metadata.title = "Danko IPTV";
+
+                            const request = new chrome.cast.media.LoadRequest(mediaInfo);
+                            session.loadMedia(request);
+                        }
+                    }
+                });
             }
         };
     </script>
