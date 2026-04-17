@@ -513,10 +513,10 @@
                         <div class="controls-right">
                             <span id="targetStatus">🔴 EN VIVO</span>
                             <!-- Botón de chromecast nativo si la extension GoogleCast está disponible -->
-                            <!-- BOTÓN OFICIAL DE GOOGLE CAST (INFALIBLE) -->
-                            <div class="control-btn cast-container" style="display: flex; align-items: center; justify-content: center; position: relative;">
-                                <google-cast-launcher style="width: 24px; height: 24px; cursor: pointer;"></google-cast-launcher>
-                            </div>
+                            <!-- BOTÓN DE CAST RESTAURADO (Icono siempre visible) -->
+                            <button class="control-btn" onclick="app.castCurrentStream()" title="Transmitir a TV" style="display: flex; align-items: center;">
+                                <i class="ri-cast-line"></i>
+                            </button>
                             <button class="control-btn" onclick="app.toggleFullscreen()" title="Pantalla Completa">
                                 <i class="ri-fullscreen-line" id="fullscreenIcon"></i>
                             </button>
@@ -1070,6 +1070,41 @@
                 const pos = (e.clientX - rect.left) / rect.width;
                 if (isFinite(this.videoEl.duration) && this.videoEl.duration > 0) {
                     this.videoEl.currentTime = pos * this.videoEl.duration;
+                }
+            },
+
+            castCurrentStream() {
+                try {
+                    if (typeof cast === 'undefined' || !cast.framework) {
+                        alert("El soporte de Cast no está listo. Prueba en unos segundos.");
+                        return;
+                    }
+
+                    const context = cast.framework.CastContext.getInstance();
+                    let session = context.getCurrentSession();
+
+                    if (!session) {
+                        // Abrir el selector de Google
+                        context.requestSession().then(() => {
+                            setTimeout(() => this.castCurrentStream(), 1000);
+                        }).catch(e => console.log('Selector cerrado'));
+                        return;
+                    }
+
+                    // Enviar el video
+                    const mediaInfo = new chrome.cast.media.MediaInfo(this.currentTUrl, 'video/mp4');
+                    mediaInfo.streamType = chrome.cast.media.StreamType.LIVE;
+                    const request = new chrome.cast.media.LoadRequest(mediaInfo);
+                    session.loadMedia(request).then(
+                        () => console.log('Transmitiendo...'),
+                        (err) => {
+                            // Reintento con formato HLS si falla el MP4
+                            mediaInfo.contentType = 'application/x-mpegurl';
+                            session.loadMedia(new chrome.cast.media.LoadRequest(mediaInfo));
+                        }
+                    );
+                } catch(e) {
+                    console.error("Error cast:", e);
                 }
             }
         };
