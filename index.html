@@ -878,10 +878,11 @@
                         const percentage = (cur / dur) * 100;
                         document.getElementById('progressBar').style.width = percentage + '%';
 
-                        // EL BUFFER TERMINA: Regla estricta de reconexión cuando quedan 0.7 segundos
+                        // EL BUFFER TERMINA: Regla estricta de reconexión cuando quedan 0.75 segundos
+                        // IMPORTANTE: dur > 3 evita reconectar si el reproductor está recién leyendo el primer micro-chunk de buffer.
                         const remaining = dur - cur;
-                        if (remaining <= 0.7 && remaining > 0 && !this.isReconnecting) {
-                            console.log(`⏱️ Quedan ${remaining.toFixed(2)}s. Reconectando automático (Regla 0.7s)`);
+                        if (dur > 3 && remaining <= 0.75 && remaining > 0 && !this.isReconnecting) {
+                            console.log(`⏱️ Quedan ${remaining.toFixed(2)}s. Reconectando automático (Regla 0.75s)`);
                             this.triggerReconnect();
                         }
                     } else {
