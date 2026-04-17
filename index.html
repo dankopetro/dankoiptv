@@ -341,33 +341,50 @@
             .main-container { flex-direction: column-reverse; }
             
             .video-area { 
-                height: 35vh; 
-                min-height: 250px;
+                height: 32vh; 
+                min-height: 220px;
+                padding: 0 !important; /* Elimina márgenes laterales del video */
                 flex: none; 
                 border-bottom: 2px solid var(--primary);
                 z-index: 10;
+                background: #000;
+            }
+
+            .video-wrapper {
+                height: 100%;
+                border-radius: 0; /* Bordes rectos para aprovechar el ancho */
+                border: none;
             }
             
             .sidebar { 
                 width: 100%; 
-                height: calc(100vh - 35vh - 60px) !important;
+                height: calc(100vh - 32vh - 50px) !important;
                 flex: none;
                 border-right: none; 
             }
 
             .glass-header { 
-                flex-direction: column; 
-                padding: 10px 15px; 
-                gap: 10px; 
-                height: auto;
-                min-height: 60px;
+                flex-direction: row; /* Logo y buscador en la misma linea */
+                padding: 5px 10px; 
+                gap: 5px; 
+                height: 50px;
+                justify-content: space-between;
             }
-            .input-group { width: 100%; }
-            .time-display { font-size: 0.75rem; }
+
+            .logo { font-size: 1rem; }
+            .logo i { font-size: 1.2rem; }
+
+            .input-group { 
+                width: 70%; 
+                gap: 5px;
+            }
+
+            .input-group input { height: 32px; font-size: 0.8rem; }
+            .btn-load, .btn-local { padding: 0 8px; height: 32px; font-size: 0.7rem; }
+
+            .time-display { display: none; } /* Ocultar reloj en movil para ganar espacio */
             #volumeSlider { display: none; }
-            .custom-controls { padding-bottom: 15px; padding-top: 25px; }
-            .controls-right { gap: 5px; }
-            .controls-left { gap: 10px; }
+            .custom-controls { padding: 10px; }
         }
 
         /* LOADING OVERLAY */
