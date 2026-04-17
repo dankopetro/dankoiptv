@@ -341,8 +341,8 @@
             .main-container { flex-direction: column-reverse; }
             
             .video-area { 
-                height: auto !important; /* El video dicta la altura */
-                aspect-ratio: 16 / 9; /* Relación de aspecto perfecta de TV */
+                height: calc(56.25vw + 20px) !important; /* 16:9 + 20px de margen de seguridad */
+                aspect-ratio: auto; 
                 min-height: auto;
                 padding: 0 !important; 
                 flex: none; 
@@ -366,7 +366,7 @@
             
             .sidebar { 
                 width: 100%; 
-                height: calc(100vh - 50px - 56.25vw) !important; /* 56.25vw es el alto exacto de un video 16:9 */
+                height: calc(100vh - 50px - (56.25vw + 20px)) !important; 
                 flex: 1;
                 border-right: none; 
             }
@@ -513,10 +513,10 @@
                         <div class="controls-right">
                             <span id="targetStatus">🔴 EN VIVO</span>
                             <!-- Botón de chromecast nativo si la extension GoogleCast está disponible -->
-                            <!-- BOTÓN DE CAST RESTAURADO (Icono siempre visible) -->
-                            <button class="control-btn" onclick="app.castCurrentStream()" title="Transmitir a TV" style="display: flex; align-items: center;">
+                            <button class="control-btn" onclick="app.requestCast()" title="Transmitir a TV" style="display: flex; align-items: center;">
                                 <i class="ri-cast-line"></i>
                             </button>
+                            <google-cast-launcher id="gcastLauncher" style="display: none;"></google-cast-launcher>
                             <button class="control-btn" onclick="app.toggleFullscreen()" title="Pantalla Completa">
                                 <i class="ri-fullscreen-line" id="fullscreenIcon"></i>
                             </button>
@@ -1074,48 +1074,20 @@
             },
 
             castCurrentStream() {
+                if (!this.currentTUrl) return;
                 try {
-                    if (typeof cast === 'undefined' || !cast.framework) {
-                        alert("El soporte de Cast no está listo. Prueba en unos segundos.");
-                        return;
+                    const castSession = cast.framework.CastContext.getInstance().getCurrentSession();
+                    if (castSession) {
+                        const mediaInfo = new chrome.cast.media.MediaInfo(this.currentTUrl, 'video/mp4');
+                        const request = new chrome.cast.media.LoadRequest(mediaInfo);
+                        castSession.loadMedia(request).then(
+                            () => console.log('Casting en proceso correctamente'),
+                            (err) => console.log('Error enviando al Chromecast', err)
+                        );
                     }
-
-                    const context = cast.framework.CastContext.getInstance();
-                    let session = context.getCurrentSession();
-
-                    if (!session) {
-                        // Abrir el selector de Google
-                        context.requestSession().then(() => {
-                            setTimeout(() => this.castCurrentStream(), 1000);
-                        }).catch(e => console.log('Selector cerrado'));
-                        return;
-                    }
-
-                    // Enviar el video
-                    const mediaInfo = new chrome.cast.media.MediaInfo(this.currentTUrl, 'video/mp4');
-                    mediaInfo.streamType = chrome.cast.media.StreamType.LIVE;
-                    const request = new chrome.cast.media.LoadRequest(mediaInfo);
-                    session.loadMedia(request).then(
-                        () => console.log('Transmitiendo...'),
-                        (err) => {
-                            // Reintento con formato HLS si falla el MP4
-                            mediaInfo.contentType = 'application/x-mpegurl';
-                            session.loadMedia(new chrome.cast.media.LoadRequest(mediaInfo));
-                        }
-                    );
                 } catch(e) {
-                    console.error("Error cast:", e);
+                    console.log('Error de api cast: ', e);
                 }
-            }
-        };
-
-        // INICIALIZACION GOOGLE CAST
-        window.__onGCastApiAvailable = function(isAvailable) {
-            if (isAvailable) {
-                cast.framework.CastContext.getInstance().setOptions({
-                    receiverApplicationId: chrome.cast.media.DEFAULT_RECEIVER_APP_ID,
-                    autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
-                });
             }
         };
 
