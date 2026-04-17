@@ -338,23 +338,30 @@
 
         /* DISEÑO RESPONSIVO (MOBILE) */
         @media (max-width: 768px) {
-            .main-container { flex-direction: column; }
+            .main-container { flex-direction: column-reverse; }
             
             .video-area { 
-                height: 30vh; 
-                min-height: 220px;
-                flex: none; /* previene que cambie de tamaño */
+                height: 35vh; 
+                min-height: 250px;
+                flex: none; 
                 border-bottom: 2px solid var(--primary);
                 z-index: 10;
             }
             
             .sidebar { 
                 width: 100%; 
-                flex: 1; /* Ocupa el resto de la pantalla exacta */
+                height: calc(100vh - 35vh - 60px) !important;
+                flex: none;
                 border-right: none; 
             }
 
-            .glass-header { flex-direction: column; padding: 10px 15px; gap: 10px; }
+            .glass-header { 
+                flex-direction: column; 
+                padding: 10px 15px; 
+                gap: 10px; 
+                height: auto;
+                min-height: 60px;
+            }
             .input-group { width: 100%; }
             .time-display { font-size: 0.75rem; }
             #volumeSlider { display: none; }
@@ -577,32 +584,24 @@
                 }
             },
 
-            // MOTOR DE RECARGA GLOBAL (Pull to Refresh para Android)
+            // MOTOR DE RECARGA RESTRINGIDO (Solo desde la cabecera)
             setupPullToRefresh() {
                 let startY = 0;
                 let active = false;
+                const header = document.querySelector('.glass-header');
+                if (!header) return;
 
-                window.addEventListener('touchstart', (e) => {
-                    // Solo si estamos en la parte superior de la ventana o de la lista
-                    const list = document.getElementById('chanList');
-                    const isAtTop = !list || list.scrollTop <= 0;
-                    
-                    if (isAtTop) {
-                        startY = e.touches[0].clientY;
-                        active = true;
-                    } else {
-                        active = false;
-                    }
+                header.addEventListener('touchstart', (e) => {
+                    startY = e.touches[0].clientY;
+                    active = true;
                 }, { passive: true });
 
-                window.addEventListener('touchmove', (e) => {
+                header.addEventListener('touchmove', (e) => {
                     if (!active) return;
-                    
                     const currentY = e.touches[0].clientY;
                     const diff = currentY - startY;
 
-                    // Si arrastra más de 120px hacia abajo
-                    if (diff > 120) {
+                    if (diff > 100) {
                         active = false;
                         const loader = document.getElementById('loader');
                         if(loader) {
@@ -610,7 +609,6 @@
                             document.getElementById('loaderText').innerText = "↻";
                             document.getElementById('loaderSubtext').innerText = "Recargando...";
                         }
-                        // Pequeña vibración si el equipo lo permite
                         if (navigator.vibrate) navigator.vibrate(15);
                         setTimeout(() => window.location.reload(), 150);
                     }
