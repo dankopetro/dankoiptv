@@ -341,7 +341,8 @@
             .main-container { flex-direction: column-reverse; }
             
             .video-area { 
-                height: calc(56.25vw + 20px) !important; /* 16:9 + 20px de margen de seguridad */
+                height: calc(56.25vw + 50px) !important; /* Margen de seguridad agresivo de 50px */
+                margin-top: 10px; /* Separación de la cabecera */
                 aspect-ratio: auto; 
                 min-height: auto;
                 padding: 0 !important; 
@@ -366,7 +367,7 @@
             
             .sidebar { 
                 width: 100%; 
-                height: calc(100vh - 50px - (56.25vw + 20px)) !important; 
+                height: calc(100vh - 60px - (56.25vw + 50px)) !important; 
                 flex: 1;
                 border-right: none; 
             }
