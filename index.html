@@ -316,28 +316,29 @@
 
         /* DISEÑO RESPONSIVO (MOBILE) */
         @media (max-width: 768px) {
-            .app-container { flex-direction: column; }
+            .main-container { flex-direction: column; }
             
-            /* El video pasa hacia arriba en mobile (order 1) */
             .video-area { 
-                order: 1; 
-                height: 35vh; 
-                min-height: 250px;
+                height: 30vh; 
+                min-height: 220px;
+                flex: none; /* previene que cambie de tamaño */
                 border-bottom: 2px solid var(--primary);
                 z-index: 10;
             }
             
-            /* La lista pasa hacia abajo en mobile (order 2) */
             .sidebar { 
-                order: 2; 
                 width: 100%; 
-                height: 65vh; 
+                flex: 1; /* Ocupa el resto de la pantalla exacta */
                 border-right: none; 
             }
 
-            .time-display { font-size: 0.8rem; }
+            .glass-header { flex-direction: column; padding: 10px 15px; gap: 10px; }
+            .input-group { width: 100%; }
+            .time-display { font-size: 0.75rem; }
             #volumeSlider { display: none; }
-            .custom-controls { padding-bottom: 25px; }
+            .custom-controls { padding-bottom: 15px; padding-top: 25px; }
+            .controls-right { gap: 5px; }
+            .controls-left { gap: 10px; }
         }
 
         /* LOADING OVERLAY */
@@ -381,12 +382,7 @@
             margin-top: 10px;
         }
 
-        @media (max-width: 768px) {
-            .main-container { flex-direction: column; }
-            .sidebar { width: 100%; height: 40vh; border-right: none; border-bottom: 1px solid var(--border); }
-            .video-area { height: 60vh; flex: none; }
-            .glass-header { flex-direction: column; padding: 15px; }
-        }
+        /* (Media query movil unificada arriba) */
 
     </style>
 </head>
@@ -454,7 +450,10 @@
                         <div class="controls-right">
                             <span id="targetStatus">🔴 EN VIVO</span>
                             <!-- Botón de chromecast nativo si la extension GoogleCast está disponible -->
-                            <google-cast-launcher style="cursor: pointer; display: inline-block; width: 30px; height: 30px; filter: invert(1); margin-right: 10px;"></google-cast-launcher>
+                            <button class="control-btn" onclick="app.requestCast()" title="Transmitir a TV" style="display: flex; align-items: center;">
+                                <i class="ri-cast-line"></i>
+                            </button>
+                            <google-cast-launcher id="gcastLauncher" style="display: none;"></google-cast-launcher>
                             <button class="control-btn" onclick="app.toggleFullscreen()" title="Pantalla Completa">
                                 <i class="ri-fullscreen-line" id="fullscreenIcon"></i>
                             </button>
@@ -539,9 +538,27 @@
                 this.setupPullToRefresh();
             },
 
+            // FORZAR MENU DE CHROMECAST (Mobile Fallback)
+            requestCast() {
+                if (typeof cast !== 'undefined' && cast.framework) {
+                    try {
+                        cast.framework.CastContext.getInstance().requestSession().then(() => {
+                            console.log("Cast session started");
+                        }).catch(err => {
+                            if(err !== 'cancel') alert("Error al iniciar Chromecast. Asegúrate de estar en la misma red WiFi.");
+                        });
+                    } catch(e) {
+                        alert("Chromecast no disponible: " + e.message);
+                    }
+                } else {
+                    alert("Google Cast no detectado. Utiliza Google Chrome.");
+                }
+            },
+
             // FUNCION: TIRAR HACIA ABAJO PARA RECARGAR (Pull to Refresh Custom para Android)
             setupPullToRefresh() {
-                const list = document.getElementById('channelList');
+                const list = document.getElementById('chanList');
+                if (!list) return;
                 let startY = 0;
                 let isAtTop = false;
 
