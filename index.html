@@ -513,10 +513,10 @@
                         <div class="controls-right">
                             <span id="targetStatus">🔴 EN VIVO</span>
                             <!-- Botón de chromecast nativo si la extension GoogleCast está disponible -->
-                            <button class="control-btn" onclick="app.requestCast()" title="Transmitir a TV" style="display: flex; align-items: center;">
+                            <button class="control-btn" onclick="app.castCurrentStream()" title="Transmitir a TV" style="display: flex; align-items: center;">
                                 <i class="ri-cast-line"></i>
                             </button>
-                            <google-cast-launcher id="gcastLauncher" style="display: none;"></google-cast-launcher>
+                            <google-cast-launcher id="gcastLauncher" style="width:0;height:0;opacity:0;"></google-cast-launcher>
                             <button class="control-btn" onclick="app.toggleFullscreen()" title="Pantalla Completa">
                                 <i class="ri-fullscreen-line" id="fullscreenIcon"></i>
                             </button>
