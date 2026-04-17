@@ -823,12 +823,12 @@
                 else if (window.mpegts && isTs) {
                     this.playerInstance = mpegts.createPlayer({
                         type: 'm2ts',
-                        isLive: true,
+                        isLive: false, // Falso permite que el reproductor bufferee agresivamente hacia adelante
                         url: tUrl
                     }, {
                         enableWorker: true,
                         lazyLoad: false,
-                        liveBufferLatencyChasing: false // APAGADO para evitar el efecto de cámara rápida
+                        liveBufferLatencyChasing: false
                     });
                     this.playerInstance.attachMediaElement(v);
                     this.playerInstance.load();
