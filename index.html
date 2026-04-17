@@ -1116,6 +1116,21 @@
         };
 
         app.init();
+
+        // INICIALIZACION CRITICA DE GOOGLE CAST
+        window.__onGCastApiAvailable = function(isAvailable) {
+            if (isAvailable) {
+                try {
+                    cast.framework.CastContext.getInstance().setOptions({
+                        receiverApplicationId: chrome.cast.media.DEFAULT_RECEIVER_APP_ID,
+                        autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
+                    });
+                    console.log('✅ Google Cast SDK listo');
+                } catch(e) {
+                    console.error('Error inicializando Cast:', e);
+                }
+            }
+        };
     </script>
 </body>
 </html>
