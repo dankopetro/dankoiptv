@@ -788,7 +788,7 @@
             },
 
             // REPRODUCTOR UNIVERSAL
-            playStream(url, forceDirect = false) {
+            playStream(url, forceDirect = false, isFallback = false) {
                 this.currentUrl = url;
                 const v = this.videoEl;
 
@@ -797,13 +797,15 @@
                     try { this.playerInstance.reset(); } catch(e){} 
                     this.playerInstance = null;
                 }
-                // PLAN B: EL TRUCO DE LOS BALDES (M3U8)
-                // Si la URL es un flujo Xtream Nativo (Tubería), la transformamos astutamente en HLS (.m3u8)
+
+                // PLAN B: EL TRUCO DE LOS BALDES (M3U8) - Solo si no es un reintento por fallo
                 let targetUrl = url;
                 let isXtreamNative = /\/([^\/]+)\/([^\/]+)\/(\d+)(?:\.ts)?$/.test(url);
-                if (isXtreamNative && !forceDirect) {
+                let useHlsBuckets = isXtreamNative && !forceDirect && !isFallback;
+
+                if (useHlsBuckets) {
                     targetUrl = url.replace(/\/([^\/]+)\/([^\/]+)\/(\d+)(?:\.ts)?$/, '/live/$1/$2/$3.m3u8');
-                    console.log('🔄 Transformación a Baldes HLS (M3U8) Activada:', targetUrl);
+                    console.log('🔄 Intentando Baldes HLS:', targetUrl);
                 }
 
                 const isMpd = targetUrl.includes('.mpd');
@@ -811,9 +813,9 @@
                 const isTs = targetUrl.toLowerCase().endsWith('.ts');
 
                 const tunnelPrefix = "https://api.codetabs.com/v1/proxy/?quest=";
-                const needsProxy = !forceDirect && (targetUrl.startsWith('http:')); // Proxyenciar todo lo HTTP inseguro
+                const needsProxy = !forceDirect && (targetUrl.startsWith('http:'));
                 const tUrl = needsProxy ? (tunnelPrefix + encodeURIComponent(targetUrl)) : targetUrl;
-                this.currentTUrl = tUrl; // La guardamos p/ el Chromecast
+                this.currentTUrl = tUrl; 
                 
                 if (isMpd && window.dashjs) {
                     this.playerInstance = dashjs.MediaPlayer().create();
@@ -821,36 +823,33 @@
                 } 
                 else if (isM3u8 && window.Hls && Hls.isSupported()) {
                     
-                    // Inyectamos un Interceptor Ninja en HLS para que cada balde minúsculo (.ts) interno 
-                    // pase individualmente por Codetabs sin golpear el límite de 5MB.
                     class M3U8ProxyLoader extends Hls.DefaultConfig.loader {
                         constructor(config) {
                             super(config);
                             const load = this.load.bind(this);
                             this.load = function (ctx, cfg, callbacks) {
-                                if (needsProxy && (ctx.type === 'manifest' || ctx.type === 'level')) {
+                                if (needsProxy && (ctx.type === 'manifest' || ctx.type === 'level' || ctx.type === 'fragment')) {
                                     const onSuccess = callbacks.onSuccess;
                                     callbacks.onSuccess = function(res, stats, context, networkDetails) {
                                         let originalUrl = context.url;
                                         const match = context.url.match(/quest=(.*)/);
                                         if(match) originalUrl = decodeURIComponent(match[1]);
                                         
-                                        const baseUrl = originalUrl.substring(0, originalUrl.lastIndexOf('/'));
-                                        
-                                        if (res.data && typeof res.data === 'string') {
+                                        if (res.data && typeof res.data === 'string' && ctx.type !== 'fragment') {
+                                            const baseUrl = originalUrl.substring(0, originalUrl.lastIndexOf('/') + 1);
                                             let lines = res.data.split(/\r?\n/);
                                             for(let i=0; i<lines.length; i++) {
                                                 let ln = lines[i].trim();
                                                 if(ln && !ln.startsWith('#')) {
-                                                    if(!ln.startsWith('http')) { // Ruta relativa a absoluta
+                                                    if(!ln.startsWith('http')) {
                                                         if(ln.startsWith('/')) {
                                                             const originMatch = originalUrl.match(/^(https?:\/\/[^\/]+)/);
-                                                            ln = (originMatch ? originMatch[1] : baseUrl) + ln;
+                                                            ln = (originMatch ? originMatch[1] : baseUrl.replace(/\/live\/.*$/, '')) + ln;
                                                         } else {
-                                                            ln = baseUrl + '/' + ln;
+                                                            ln = baseUrl + ln;
                                                         }
                                                     }
-                                                    lines[i] = tunnelPrefix + encodeURIComponent(ln); // Enmascarar 
+                                                    lines[i] = tunnelPrefix + encodeURIComponent(ln);
                                                 }
                                             }
                                             res.data = lines.join('\n');
@@ -864,14 +863,24 @@
                     }
 
                     this.playerInstance = new Hls({ 
-                        maxBufferLength: 45, // Capacidad para acumular baldes
-                        pLoader: needsProxy ? M3U8ProxyLoader : Hls.DefaultConfig.loader 
+                        maxBufferLength: 40,
+                        pLoader: needsProxy ? M3U8ProxyLoader : Hls.DefaultConfig.loader,
+                        enableWorker: true
                     });
+
+                    // Sistema de Emergencia: Si HLS falla, vuelve a MpegTS
+                    this.playerInstance.on(Hls.Events.ERROR, (event, data) => {
+                        if (data.fatal && useHlsBuckets) {
+                            console.warn("⚠️ Baldes HLS Fallaron. Activando Emergencia MpegTS...");
+                            this.playStream(url, false, true);
+                        }
+                    });
+
                     this.playerInstance.loadSource(tUrl);
                     this.playerInstance.attachMedia(v);
                     this.playerInstance.on(Hls.Events.MANIFEST_PARSED, () => v.play());
                 }
-                else if (window.mpegts && isTs) {
+                else if (window.mpegts && (isTs || isXtreamNative)) {
                     this.playerInstance = mpegts.createPlayer({
                         type: 'm2ts',
                         isLive: false, // Falso permite que el reproductor bufferee agresivamente hacia adelante
