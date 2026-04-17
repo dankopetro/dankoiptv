@@ -828,7 +828,10 @@
                     }, {
                         enableWorker: true,
                         lazyLoad: false,
-                        liveBufferLatencyChasing: false
+                        liveBufferLatencyChasing: false,
+                        autoCleanupSourceBuffer: true,
+                        autoCleanupMaxBackwardDuration: 5,
+                        autoCleanupMinBackwardDuration: 2
                     });
                     this.playerInstance.attachMediaElement(v);
                     this.playerInstance.load();
@@ -905,11 +908,8 @@
                         if (percentage > 100) percentage = 100;
                         document.getElementById('progressBar').style.width = percentage + '%';
 
-                        // Regla estricta: si el buffer que queda adelante cae a 0.75s, reconecta
-                        if (bufferedAhead <= 0.75 && cur > 1.5 && !this.isReconnecting) {
-                            console.log(`⏱️ Buffer vacío crítico (${bufferedAhead.toFixed(2)}s). Reconectando automático...`);
-                            this.triggerReconnect();
-                        }
+                        // Mantenemos la fluidez natural. Si la red cae, el reproductor esperará pasivamente 
+                        // en vez de reiniciar la red. Solo reconecta en eventos ENDED o ERROR detectados arriba.
                     }
                 });
 
