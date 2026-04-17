@@ -1109,36 +1109,17 @@
             }
         };
 
-        app.init();
-
-        // MOTOR DE GOOGLE CAST (BORRÓN Y CUENTA NUEVA)
+        // INICIALIZACION GOOGLE CAST
         window.__onGCastApiAvailable = function(isAvailable) {
             if (isAvailable) {
-                const context = cast.framework.CastContext.getInstance();
-                context.setOptions({
+                cast.framework.CastContext.getInstance().setOptions({
                     receiverApplicationId: chrome.cast.media.DEFAULT_RECEIVER_APP_ID,
                     autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
                 });
-
-                // Escuchar cuando el usuario elige una TV y se conecta
-                context.addEventListener(cast.framework.CastContextEventType.SESSION_STATE_CHANGED, (event) => {
-                    if (event.sessionState === cast.framework.SessionState.SESSION_STARTED) {
-                        const session = context.getCurrentSession();
-                        if (session && app.currentTUrl) {
-                            console.log("Cargando video en la TV seleccionada...");
-                            
-                            const mediaInfo = new chrome.cast.media.MediaInfo(app.currentTUrl, 'video/mp4');
-                            mediaInfo.streamType = chrome.cast.media.StreamType.LIVE;
-                            mediaInfo.metadata = new chrome.cast.media.GenericMediaMetadata();
-                            mediaInfo.metadata.title = "Danko IPTV";
-
-                            const request = new chrome.cast.media.LoadRequest(mediaInfo);
-                            session.loadMedia(request);
-                        }
-                    }
-                });
             }
         };
+
+        app.init();
     </script>
 </body>
 </html>
