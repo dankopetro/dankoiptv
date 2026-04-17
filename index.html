@@ -1078,15 +1078,39 @@
                 try {
                     const castSession = cast.framework.CastContext.getInstance().getCurrentSession();
                     if (castSession) {
-                        const mediaInfo = new chrome.cast.media.MediaInfo(this.currentTUrl, 'video/mp4');
+                        let contentType = 'video/mp4'; // Default
+                        const url = this.currentUrl.toLowerCase();
+
+                        if (url.includes('.m3u8')) contentType = 'application/x-mpegurl';
+                        else if (url.includes('.mpd')) contentType = 'application/dash+xml';
+                        else if (url.includes('.ts') || /\/\d+$/.test(url)) contentType = 'video/mp2t';
+
+                        const mediaInfo = new chrome.cast.media.MediaInfo(this.currentTUrl, contentType);
+                        
+                        // Metadatos para que la TV sepa que es IPTV
+                        mediaInfo.metadata = new chrome.cast.media.GenericMediaMetadata();
+                        mediaInfo.metadata.metadataType = chrome.cast.media.MetadataType.GENERIC;
+                        mediaInfo.metadata.title = "Danko IPTV Stream";
+                        mediaInfo.streamType = chrome.cast.media.StreamType.LIVE;
+
                         const request = new chrome.cast.media.LoadRequest(mediaInfo);
                         castSession.loadMedia(request).then(
-                            () => console.log('Casting en proceso correctamente'),
-                            (err) => console.log('Error enviando al Chromecast', err)
+                            () => console.log('Casting iniciado con éxito'),
+                            (err) => {
+                                console.error('Error en Cast:', err);
+                                // Reintento con tipo generico si falla
+                                if (contentType !== 'video/mp4') {
+                                    mediaInfo.contentType = 'video/mp4';
+                                    castSession.loadMedia(new chrome.cast.media.LoadRequest(mediaInfo));
+                                }
+                            }
                         );
+                    } else {
+                        // Si no hay sesion, invocar el dialogo de seleccion
+                        cast.framework.CastContext.getInstance().requestSession();
                     }
                 } catch(e) {
-                    console.log('Error de api cast: ', e);
+                    console.error('Error crítico de API Cast:', e);
                 }
             }
         };
