@@ -339,11 +339,14 @@
 
         /* DISEÑO RESPONSIVO (MOBILE) */
         @media (max-width: 768px) {
-            .main-container { flex-direction: column-reverse; }
+            .main-container { 
+                flex-direction: column-reverse; 
+                margin-top: 15px; /* Separación con la cabecera */
+            }
             
             .video-area { 
-                height: 35vh; 
-                min-height: 250px;
+                height: 45vh !important; /* Más alto para que no corte cabezas */
+                min-height: 280px;
                 flex: none; 
                 border-bottom: 2px solid var(--primary);
                 z-index: 10;
@@ -351,7 +354,7 @@
             
             .sidebar { 
                 width: 100%; 
-                height: calc(100vh - 35vh - 60px) !important;
+                height: calc(100vh - 45vh - 120px) !important; /* Ajuste del resto */
                 flex: none;
                 border-right: none; 
             }
