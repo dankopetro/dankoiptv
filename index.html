@@ -602,20 +602,9 @@
             },
 
             // FORZAR MENU DE CHROMECAST (Mobile Fallback)
+            // RECARGAR MENU DE CHROMECAST (Mobile)
             requestCast() {
-                if (typeof cast !== 'undefined' && cast.framework) {
-                    try {
-                        cast.framework.CastContext.getInstance().requestSession().then(() => {
-                            console.log("Cast session started");
-                        }).catch(err => {
-                            if(err !== 'cancel') alert("Error al iniciar Chromecast. Asegúrate de estar en la misma red WiFi.");
-                        });
-                    } catch(e) {
-                        alert("Chromecast no disponible: " + e.message);
-                    }
-                } else {
-                    alert("Google Cast no detectado. Utiliza Google Chrome.");
-                }
+                this.castCurrentStream();
             },
 
             // MOTOR DE RECARGA RESTRINGIDO (Solo desde la cabecera)
@@ -1076,20 +1065,24 @@
             castCurrentStream() {
                 if (!this.currentTUrl) return;
                 try {
-                    const castSession = cast.framework.CastContext.getInstance().getCurrentSession();
+                    const context = cast.framework.CastContext.getInstance();
+                    
+                    // Asegurar opciones SIEMPRE antes de cualquier accion (Esto mata el cartel)
+                    context.setOptions({
+                        receiverApplicationId: 'CC1AD845',
+                        autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
+                    });
+
+                    const castSession = context.getCurrentSession();
                     if (castSession) {
                         const mediaInfo = new chrome.cast.media.MediaInfo(this.currentTUrl, 'video/mp4');
                         const request = new chrome.cast.media.LoadRequest(mediaInfo);
-                        castSession.loadMedia(request).then(
-                            () => console.log('Casting OK'),
-                            (err) => console.log('Error Cast', err)
-                        );
+                        castSession.loadMedia(request);
                     } else {
-                        // Invocar selector nativo si no hay sesion
-                        cast.framework.CastContext.getInstance().requestSession();
+                        context.requestSession();
                     }
                 } catch(e) {
-                    console.log('Error Cast: ', e);
+                    console.log('Cast silent wait...');
                 }
             }
         };
