@@ -558,7 +558,7 @@
     <script>
 
 
-        const app = {
+        window.app = {
             db: [],
             categories: new Set(),
             currentUrl: '',
@@ -1047,10 +1047,21 @@
                 try {
                     const castSession = cast.framework.CastContext.getInstance().getCurrentSession();
                     if (castSession) {
-                        const mediaInfo = new chrome.cast.media.MediaInfo(this.currentTUrl, 'video/mp4');
+                        // Detectar el tipo de contenido para que la TV no lo rechace
+                        let contentType = 'video/mp4';
+                        if (this.currentUrl.includes('.m3u8')) contentType = 'application/x-mpegurl';
+                        if (this.currentUrl.includes('.mpd')) contentType = 'application/dash+xml';
+
+                        const mediaInfo = new chrome.cast.media.MediaInfo(this.currentTUrl, contentType);
                         const request = new chrome.cast.media.LoadRequest(mediaInfo);
+                        
                         castSession.loadMedia(request).then(
-                            () => console.log('Casting en proceso correctamente'),
+                            () => {
+                                console.log('Casting en proceso correctamente');
+                                // PAUSAR LOCALMENTE AL ENVIAR A TV
+                                this.videoEl.pause();
+                                document.getElementById('targetStatus').innerText = "📺 EN TV";
+                            },
                             (err) => console.log('Error enviando al Chromecast', err)
                         );
                     }
@@ -1060,7 +1071,7 @@
             }
         };
 
-        app.init();
+        window.app.init();
     </script>
 </body>
 </html>
