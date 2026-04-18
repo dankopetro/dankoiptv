@@ -341,9 +341,9 @@
             .main-container { flex-direction: column-reverse; }
             
             .video-area { 
-                height: auto !important;
-                aspect-ratio: 16 / 9; /* Volvemos al formato limpio sin espacio negro */
-                min-height: auto;
+                height: 50vh !important; /* Altura fija generosa para que no corte nada */
+                margin-top: 20px; 
+                min-height: 280px;
                 padding: 0 !important; 
                 flex: none; 
                 border-bottom: 2px solid var(--primary);
@@ -366,7 +366,7 @@
             
             .sidebar { 
                 width: 100%; 
-                height: calc(100vh - 50px - 56.25vw) !important; 
+                height: calc(100vh - 50px - 50vh - 20px) !important; 
                 flex: 1;
                 border-right: none; 
             }
@@ -569,13 +569,13 @@
         // Inicializar Google Cast de forma oculta en ventana global
         window.__onGCastApiAvailable = function(isAvailable) {
             if (isAvailable && cast && cast.framework) {
-                cast.framework.CastContext.getInstance().setOptions({
-                    receiverApplicationId: chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
+                const context = cast.framework.CastContext.getInstance();
+                context.setOptions({
+                    receiverApplicationId: chrome.cast.media.DEFAULT_RECEIVER_APP_ID,
                     autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
                 });
                 
-                // Si el evento de Chromecast se activa, enrutamos el stream a la TV
-                cast.framework.CastContext.getInstance().addEventListener(
+                context.addEventListener(
                     cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
                     function(event) {
                         if (event.sessionState === cast.framework.SessionState.SESSION_STARTED) {
@@ -1076,48 +1076,20 @@
             castCurrentStream() {
                 if (!this.currentTUrl) return;
                 try {
-                    const castContext = cast.framework.CastContext.getInstance();
-                    
-                    // Mostrar aviso visual (mismo estilo solicitado)
-                    const loader = document.getElementById('loader');
-                    if (loader) {
-                        loader.classList.add('active');
-                        document.getElementById('loaderText').innerText = "📺";
-                        document.getElementById('loaderSubtext').innerText = "Transmitiendo a la TV...";
-                    }
-
-                    // Forzar opciones con el ID directo (Arregla el error en movil definitivamente)
-                    castContext.setOptions({
-                        receiverApplicationId: 'CC1AD845', // ID Estándar de Google
-                        autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
-                    });
-
-                    const castSession = castContext.getCurrentSession();
+                    const castSession = cast.framework.CastContext.getInstance().getCurrentSession();
                     if (castSession) {
                         const mediaInfo = new chrome.cast.media.MediaInfo(this.currentTUrl, 'video/mp4');
                         const request = new chrome.cast.media.LoadRequest(mediaInfo);
                         castSession.loadMedia(request).then(
-                            () => {
-                                console.log('Casting en proceso correctamente');
-                                if (loader) loader.classList.remove('active');
-                            },
-                            (err) => {
-                                console.log('Error enviando al Chromecast', err);
-                                if (loader) loader.classList.remove('active');
-                            }
+                            () => console.log('Casting OK'),
+                            (err) => console.log('Error Cast', err)
                         );
                     } else {
-                        castContext.requestSession().then(() => {
-                            this.castCurrentStream(); 
-                        }, (err) => {
-                            if (loader) loader.classList.remove('active');
-                            console.log("Cast cancelado", err);
-                        });
+                        // Invocar selector nativo si no hay sesion
+                        cast.framework.CastContext.getInstance().requestSession();
                     }
                 } catch(e) {
-                    console.log('Error de api cast: ', e);
-                    const loader = document.getElementById('loader');
-                    if (loader) loader.classList.remove('active');
+                    console.log('Error Cast: ', e);
                 }
             }
         };
