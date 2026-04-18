@@ -512,11 +512,10 @@
 
                         <div class="controls-right">
                             <span id="targetStatus">🔴 EN VIVO</span>
-                            <!-- Botón de chromecast nativo: Es el más estable para detectar teles -->
-                            <div class="control-btn" style="position: relative; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
-                                <i class="ri-cast-line" style="position: absolute; pointer-events: none;"></i>
-                                <google-cast-launcher style="opacity: 0; width: 100%; height: 100%; cursor: pointer;"></google-cast-launcher>
-                            </div>
+                            <!-- Botón de Cast Directo -->
+                            <button class="control-btn" onclick="app.requestCast()" title="Transmitir a TV">
+                                <i class="ri-cast-line"></i>
+                            </button>
                             <button class="control-btn" onclick="app.toggleFullscreen()" title="Pantalla Completa">
                                 <i class="ri-fullscreen-line" id="fullscreenIcon"></i>
                             </button>
