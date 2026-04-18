@@ -10,7 +10,27 @@
     <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.min.js"></script>
     
-    <!-- Google Cast (Chromecast) -->
+    <!-- Google Cast (Chromecast) - Inicialización temprana para evitar errores en móviles -->
+    <script>
+        window.__onGCastApiAvailable = function(isAvailable) {
+            if (isAvailable && cast && cast.framework) {
+                cast.framework.CastContext.getInstance().setOptions({
+                    receiverApplicationId: chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
+                    autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
+                    resumeSavedSession: true
+                });
+                
+                cast.framework.CastContext.getInstance().addEventListener(
+                    cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
+                    function(event) {
+                        if (event.sessionState === cast.framework.SessionState.SESSION_STARTED) {
+                            if (window.app) window.app.castCurrentStream();
+                        }
+                    }
+                );
+            }
+        };
+    </script>
     <script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
 
     <!-- Iconos -->
@@ -536,25 +556,7 @@
     </script>
 
     <script>
-        // Inicializar Google Cast de forma oculta en ventana global
-        window.__onGCastApiAvailable = function(isAvailable) {
-            if (isAvailable && cast && cast.framework) {
-                cast.framework.CastContext.getInstance().setOptions({
-                    receiverApplicationId: chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
-                    autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
-                });
-                
-                // Si el evento de Chromecast se activa, enrutamos el stream a la TV
-                cast.framework.CastContext.getInstance().addEventListener(
-                    cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
-                    function(event) {
-                        if (event.sessionState === cast.framework.SessionState.SESSION_STARTED) {
-                            app.castCurrentStream();
-                        }
-                    }
-                );
-            }
-        };
+
 
         const app = {
             db: [],
@@ -572,19 +574,28 @@
             },
 
             // FORZAR MENU DE CHROMECAST (Mobile Fallback)
+            // FORZAR MENU DE CHROMECAST (Mobile Fallback)
             requestCast() {
                 if (typeof cast !== 'undefined' && cast.framework) {
                     try {
-                        cast.framework.CastContext.getInstance().requestSession().then(() => {
+                        const context = cast.framework.CastContext.getInstance();
+                        // Verificar si las opciones fueron seteadas (evita el error de "cast provided")
+                        if (!context.getOptions()) {
+                             context.setOptions({
+                                receiverApplicationId: chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
+                                autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
+                            });
+                        }
+                        context.requestSession().then(() => {
                             console.log("Cast session started");
                         }).catch(err => {
-                            if(err !== 'cancel') alert("Error al iniciar Chromecast. Asegúrate de estar en la misma red WiFi.");
+                            if(err !== 'cancel') console.log("Cast cancelado o error:", err);
                         });
                     } catch(e) {
-                        alert("Chromecast no disponible: " + e.message);
+                        alert("Sincronizando con Chromecast... intenta en 2 segundos.");
                     }
                 } else {
-                    alert("Google Cast no detectado. Utiliza Google Chrome.");
+                    alert("Google Cast no detectado. Utiliza Google Chrome y asegúrate de estar en WiFi.");
                 }
             },
 
