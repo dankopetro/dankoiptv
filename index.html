@@ -341,9 +341,8 @@
             .main-container { flex-direction: column-reverse; }
             
             .video-area { 
-                height: 50vh !important; /* Altura fija generosa para que no corte nada */
-                margin-top: 20px; 
-                min-height: 280px;
+                height: 60vh !important; /* Ahora sí, bien grande para que no corte nada */
+                min-height: 320px;
                 padding: 0 !important; 
                 flex: none; 
                 border-bottom: 2px solid var(--primary);
@@ -366,7 +365,7 @@
             
             .sidebar { 
                 width: 100%; 
-                height: calc(100vh - 50px - 50vh - 20px) !important; 
+                height: calc(100vh - 50px - 60vh) !important; 
                 flex: 1;
                 border-right: none; 
             }
@@ -512,10 +511,10 @@
 
                         <div class="controls-right">
                             <span id="targetStatus">🔴 EN VIVO</span>
-                            <!-- Botón de Cast Directo -->
-                            <button class="control-btn" onclick="app.requestCast()" title="Transmitir a TV">
-                                <i class="ri-cast-line"></i>
-                            </button>
+                            <!-- Botón de Cast Nativo (Vuelve a ser visible para detectar TVs) -->
+                            <div class="control-btn" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                                <google-cast-launcher id="gcastLauncher" style="width: 100%; height: 100%;"></google-cast-launcher>
+                            </div>
                             <button class="control-btn" onclick="app.toggleFullscreen()" title="Pantalla Completa">
                                 <i class="ri-fullscreen-line" id="fullscreenIcon"></i>
                             </button>
@@ -1062,16 +1061,20 @@
             },
 
             castCurrentStream() {
-                if (!this.currentTUrl) return;
+                // Para la tele usamos el link ORIGINAL (this.currentUrl), no el túnel proxy
+                if (!this.currentUrl) return;
                 try {
                     const castSession = cast.framework.CastContext.getInstance().getCurrentSession();
                     if (castSession) {
-                        const mediaInfo = new chrome.cast.media.MediaInfo(this.currentTUrl, 'video/mp4');
+                        const mediaInfo = new chrome.cast.media.MediaInfo(this.currentUrl, 'video/mp4');
                         const request = new chrome.cast.media.LoadRequest(mediaInfo);
-                        castSession.loadMedia(request);
+                        castSession.loadMedia(request).then(
+                            () => console.log('Casting en TV OK'),
+                            (err) => console.log('Error carga en TV', err)
+                        );
                     }
                 } catch(e) {
-                    console.log('Error de carga en Cast: ', e);
+                    console.log('Error de api cast: ', e);
                 }
             }
         };
