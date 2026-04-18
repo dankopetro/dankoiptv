@@ -574,26 +574,14 @@
             },
 
             // FORZAR MENU DE CHROMECAST (Mobile Fallback)
-            // FORZAR MENU DE CHROMECAST (Mobile Fallback)
             requestCast() {
                 if (typeof cast !== 'undefined' && cast.framework) {
-                    try {
-                        const context = cast.framework.CastContext.getInstance();
-                        // Verificar si las opciones fueron seteadas (evita el error de "cast provided")
-                        if (!context.getOptions()) {
-                             context.setOptions({
-                                receiverApplicationId: chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
-                                autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
-                            });
-                        }
-                        context.requestSession().then(() => {
-                            console.log("Cast session started");
-                        }).catch(err => {
-                            if(err !== 'cancel') console.log("Cast cancelado o error:", err);
-                        });
-                    } catch(e) {
-                        alert("Sincronizando con Chromecast... intenta en 2 segundos.");
-                    }
+                    const context = cast.framework.CastContext.getInstance();
+                    context.requestSession().then(() => {
+                        console.log("Cast session started");
+                    }).catch(err => {
+                        if(err !== 'cancel') console.log("Error de Cast:", err);
+                    });
                 } else {
                     alert("Google Cast no detectado. Utiliza Google Chrome y asegúrate de estar en WiFi.");
                 }
