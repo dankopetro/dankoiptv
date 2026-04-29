@@ -503,8 +503,11 @@
                         <div class="controls-right">
                             <span id="targetStatus">🔴 EN VIVO</span>
                             <!-- Botón de chromecast nativo si la extension GoogleCast está disponible -->
-                            <button class="control-btn" onclick="app.requestCast()" title="Transmitir a TV" style="display: flex; align-items: center;">
+                            <button class="control-btn" onclick="app.requestCast()" title="Transmitir a TV (Chrome)" style="display: flex; align-items: center;">
                                 <i class="ri-cast-line"></i>
+                            </button>
+                            <button class="control-btn" onclick="app.externalCast()" title="Enviar a App de TV (Web Video Caster, etc)" style="display: flex; align-items: center;">
+                                <i class="ri-share-forward-box-line"></i>
                             </button>
                             <google-cast-launcher id="gcastLauncher" style="display: none;"></google-cast-launcher>
                             <button class="control-btn" onclick="app.toggleFullscreen()" title="Pantalla Completa">
@@ -794,7 +797,11 @@
                     div.onclick = () => {
                         document.querySelectorAll('.channel-item').forEach(el=>el.classList.remove('active'));
                         div.classList.add('active');
-                        this.playStream(c.url, false);
+                        
+                        if (this.channelTimeout) clearTimeout(this.channelTimeout);
+                        this.channelTimeout = setTimeout(() => {
+                            this.playStream(c.url, false);
+                        }, 750);
                     };
                     
                     // Pasar imgs por túnel codetabs (Serverless HTTPS Proxy) para evitar bloqueos
@@ -1042,17 +1049,46 @@
                 }
             },
 
+            externalCast() {
+                if (!this.currentTUrl) {
+                    alert("Selecciona un canal primero para transmitir.");
+                    return;
+                }
+                
+                // Intenta usar la API de compartir nativa (ideal para móviles)
+                if (navigator.share) {
+                    navigator.share({
+                        title: 'Danko IPTV Stream',
+                        text: 'Abre este enlace en tu app de transmisión (ej. Web Video Caster, VLC):',
+                        url: this.currentTUrl,
+                    }).catch(console.error);
+                } else {
+                    // Fallback para PC o navegadores sin API share
+                    prompt("Copia este enlace y ábrelo en tu reproductor externo o Smart TV:", this.currentTUrl);
+                }
+            },
+
             castCurrentStream() {
-                if (!this.currentTUrl) return;
+                if (!this.currentUrl) return;
                 try {
                     const castSession = cast.framework.CastContext.getInstance().getCurrentSession();
                     if (castSession) {
                         // Detectar el tipo de contenido para que la TV no lo rechace
                         let contentType = 'video/mp4';
                         if (this.currentUrl.includes('.m3u8')) contentType = 'application/x-mpegurl';
-                        if (this.currentUrl.includes('.mpd')) contentType = 'application/dash+xml';
+                        else if (this.currentUrl.includes('.mpd')) contentType = 'application/dash+xml';
+                        else if (this.currentUrl.includes('.ts')) contentType = 'video/mp2t';
+                        else if (this.currentUrl.includes('.mkv')) contentType = 'video/x-matroska';
 
-                        const mediaInfo = new chrome.cast.media.MediaInfo(this.currentTUrl, contentType);
+                        // IMPORTANTE: Chromecast no tiene bloqueos CORS. Le enviamos la URL original (this.currentUrl).
+                        // Si le enviamos la del proxy (codetabs), el servidor del proxy suele rechazar las peticiones de los Smart TVs
+                        // y eso causa que la pantalla se quede cargando infinitamente.
+                        const mediaInfo = new chrome.cast.media.MediaInfo(this.currentUrl, contentType);
+                        
+                        // Indicar si es Directo (LIVE) o Película (BUFFERED) ayuda a que la TV no busque el final de un directo y se congele.
+                        const isVod = (this.videoEl.duration && isFinite(this.videoEl.duration) && this.videoEl.duration > 120);
+                        mediaInfo.streamType = isVod ? chrome.cast.media.StreamType.BUFFERED : chrome.cast.media.StreamType.LIVE;
+
                         const request = new chrome.cast.media.LoadRequest(mediaInfo);
                         
                         castSession.loadMedia(request).then(
