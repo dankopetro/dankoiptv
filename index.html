@@ -1055,16 +1055,23 @@
                     return;
                 }
                 
+                // Truco maestro para Android: VLC y Web Video Caster fallan si un stream de Xtream Codes no termina en .ts
+                // porque no saben qué decodificador usar. Le inyectamos la extensión si detectamos que es Xtream.
+                let shareUrl = this.currentUrl;
+                if (/\/\d+$/.test(shareUrl)) {
+                    shareUrl += '.ts';
+                }
+                
                 // Intenta usar la API de compartir nativa (ideal para móviles)
                 if (navigator.share) {
                     navigator.share({
                         title: 'Danko IPTV Stream',
-                        text: 'Abre este enlace en tu app de transmisión (ej. Web Video Caster, VLC):',
-                        url: this.currentUrl,
+                        url: shareUrl
+                        // OMITIMOS el "text" porque muchas apps de Android (como WVC) unen el texto con la URL y la rompen.
                     }).catch(console.error);
                 } else {
                     // Fallback para PC o navegadores sin API share
-                    prompt("Copia este enlace y ábrelo en tu reproductor externo o Smart TV:", this.currentUrl);
+                    prompt("Copia este enlace y ábrelo en tu reproductor externo o Smart TV:", shareUrl);
                 }
             },
 
@@ -1073,17 +1080,19 @@
                 try {
                     const castSession = cast.framework.CastContext.getInstance().getCurrentSession();
                     if (castSession) {
+                        // Truco para Smart TVs: Si es Xtream nativo, forzamos .ts para que la TV detecte que es video
+                        let castUrl = this.currentUrl;
+                        if (/\/\d+$/.test(castUrl)) castUrl += '.ts';
+
                         // Detectar el tipo de contenido para que la TV no lo rechace
                         let contentType = 'video/mp4';
-                        if (this.currentUrl.includes('.m3u8')) contentType = 'application/x-mpegurl';
-                        else if (this.currentUrl.includes('.mpd')) contentType = 'application/dash+xml';
-                        else if (this.currentUrl.includes('.ts')) contentType = 'video/mp2t';
-                        else if (this.currentUrl.includes('.mkv')) contentType = 'video/x-matroska';
+                        if (castUrl.includes('.m3u8')) contentType = 'application/x-mpegurl';
+                        else if (castUrl.includes('.mpd')) contentType = 'application/dash+xml';
+                        else if (castUrl.includes('.ts')) contentType = 'video/mp2t';
+                        else if (castUrl.includes('.mkv')) contentType = 'video/x-matroska';
 
-                        // IMPORTANTE: Chromecast no tiene bloqueos CORS. Le enviamos la URL original (this.currentUrl).
-                        // Si le enviamos la del proxy (codetabs), el servidor del proxy suele rechazar las peticiones de los Smart TVs
-                        // y eso causa que la pantalla se quede cargando infinitamente.
-                        const mediaInfo = new chrome.cast.media.MediaInfo(this.currentUrl, contentType);
+                        // IMPORTANTE: Chromecast no tiene bloqueos CORS. Le enviamos la URL original adaptada.
+                        const mediaInfo = new chrome.cast.media.MediaInfo(castUrl, contentType);
                         
                         // Indicar si es Directo (LIVE) o Película (BUFFERED) ayuda a que la TV no busque el final de un directo y se congele.
                         const isVod = (this.videoEl.duration && isFinite(this.videoEl.duration) && this.videoEl.duration > 120);
