@@ -1050,7 +1050,7 @@
             },
 
             externalCast() {
-                if (!this.currentTUrl) {
+                if (!this.currentUrl) {
                     alert("Selecciona un canal primero para transmitir.");
                     return;
                 }
@@ -1060,11 +1060,11 @@
                     navigator.share({
                         title: 'Danko IPTV Stream',
                         text: 'Abre este enlace en tu app de transmisión (ej. Web Video Caster, VLC):',
-                        url: this.currentTUrl,
+                        url: this.currentUrl,
                     }).catch(console.error);
                 } else {
                     // Fallback para PC o navegadores sin API share
-                    prompt("Copia este enlace y ábrelo en tu reproductor externo o Smart TV:", this.currentTUrl);
+                    prompt("Copia este enlace y ábrelo en tu reproductor externo o Smart TV:", this.currentUrl);
                 }
             },
 
