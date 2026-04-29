@@ -443,7 +443,7 @@
 
     <header class="glass-header">
         <div class="logo">
-            <i class="ri-live-fill"></i> Danko IPTV <span style="font-size: 0.5em; color: var(--primary); opacity: 0.8; font-weight: 600; margin-left: 5px;">v.25</span>
+            <i class="ri-live-fill"></i> Danko IPTV <span style="font-size: 0.5em; color: var(--primary); opacity: 0.8; font-weight: 600; margin-left: 5px;">v.26</span>
         </div>
         <div class="input-group">
             <button onclick="document.getElementById('localFileInput').click()" class="btn-local" title="Seleccionar archivo .M3U pesado desde tu equipo para evitar bloqueos"><i class="ri-folder-open-fill"></i> LOCAL</button>
@@ -1055,23 +1055,31 @@
                     return;
                 }
                 
-                // Truco maestro para Android: VLC y Web Video Caster fallan si un stream de Xtream Codes no termina en .ts
-                // porque no saben qué decodificador usar. Le inyectamos la extensión si detectamos que es Xtream.
-                let shareUrl = this.currentUrl;
-                if (/\/\d+$/.test(shareUrl)) {
-                    shareUrl += '.ts';
-                }
+                // TRUCO MAESTRO: Generamos un archivo .m3u en memoria que contiene el enlace y le inyectamos 
+                // cabeceras ocultas (User-Agent). Al compartir este archivo, Android obliga a VLC y a Web Video Caster 
+                // a abrirlo y leen la cabecera "Mozilla/5.0", evadiendo el bloqueo de Xtream Codes automáticamente.
+                const m3uContent = `#EXTM3U\n#EXTINF:-1, Danko IPTV Stream\n#EXTVLCOPT:http-user-agent=Mozilla/5.0\n#EXTHTTP:{"User-Agent":"Mozilla/5.0"}\n${this.currentUrl}`;
+                const blob = new Blob([m3uContent], { type: 'application/vnd.apple.mpegurl' });
                 
-                // Intenta usar la API de compartir nativa (ideal para móviles)
+                try {
+                    const file = new File([blob], "canal.m3u", { type: 'application/vnd.apple.mpegurl' });
+                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                        navigator.share({
+                            title: 'Danko IPTV',
+                            files: [file]
+                        }).catch(console.error);
+                        return;
+                    }
+                } catch (e) {}
+
+                // Fallback si el dispositivo no soporta compartir archivos, enviamos la URL con el pipe
                 if (navigator.share) {
                     navigator.share({
-                        title: 'Danko IPTV Stream',
-                        url: shareUrl
-                        // OMITIMOS el "text" porque muchas apps de Android (como WVC) unen el texto con la URL y la rompen.
+                        title: 'Danko IPTV',
+                        url: this.currentUrl + '|User-Agent=Mozilla/5.0'
                     }).catch(console.error);
                 } else {
-                    // Fallback para PC o navegadores sin API share
-                    prompt("Copia este enlace y ábrelo en tu reproductor externo o Smart TV:", shareUrl);
+                    prompt("Copia este enlace y ábrelo en tu reproductor externo:", this.currentUrl);
                 }
             },
 
@@ -1080,19 +1088,15 @@
                 try {
                     const castSession = cast.framework.CastContext.getInstance().getCurrentSession();
                     if (castSession) {
-                        // Truco para Smart TVs: Si es Xtream nativo, forzamos .ts para que la TV detecte que es video
-                        let castUrl = this.currentUrl;
-                        if (/\/\d+$/.test(castUrl)) castUrl += '.ts';
-
                         // Detectar el tipo de contenido para que la TV no lo rechace
                         let contentType = 'video/mp4';
-                        if (castUrl.includes('.m3u8')) contentType = 'application/x-mpegurl';
-                        else if (castUrl.includes('.mpd')) contentType = 'application/dash+xml';
-                        else if (castUrl.includes('.ts')) contentType = 'video/mp2t';
-                        else if (castUrl.includes('.mkv')) contentType = 'video/x-matroska';
+                        if (this.currentUrl.includes('.m3u8')) contentType = 'application/x-mpegurl';
+                        else if (this.currentUrl.includes('.mpd')) contentType = 'application/dash+xml';
+                        else if (this.currentUrl.includes('.ts') || /\/\d+$/.test(this.currentUrl)) contentType = 'video/mp2t';
+                        else if (this.currentUrl.includes('.mkv')) contentType = 'video/x-matroska';
 
                         // IMPORTANTE: Chromecast no tiene bloqueos CORS. Le enviamos la URL original adaptada.
-                        const mediaInfo = new chrome.cast.media.MediaInfo(castUrl, contentType);
+                        const mediaInfo = new chrome.cast.media.MediaInfo(this.currentUrl, contentType);
                         
                         // Indicar si es Directo (LIVE) o Película (BUFFERED) ayuda a que la TV no busque el final de un directo y se congele.
                         const isVod = (this.videoEl.duration && isFinite(this.videoEl.duration) && this.videoEl.duration > 120);
