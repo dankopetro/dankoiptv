@@ -443,7 +443,7 @@
 
     <header class="glass-header">
         <div class="logo">
-            <i class="ri-live-fill"></i> Danko IPTV <span style="font-size: 0.5em; color: var(--primary); opacity: 0.8; font-weight: 600; margin-left: 5px;">v.33</span>
+            <i class="ri-live-fill"></i> Danko IPTV <span style="font-size: 0.5em; color: var(--primary); opacity: 0.8; font-weight: 600; margin-left: 5px;">v.34</span>
         </div>
         <div class="input-group">
             <button onclick="document.getElementById('localFileInput').click()" class="btn-local" title="Seleccionar archivo .M3U pesado desde tu equipo para evitar bloqueos"><i class="ri-folder-open-fill"></i> LOCAL</button>
@@ -1086,25 +1086,16 @@
             },
 
             castCurrentStream() {
-                if (!this.currentUrl) return;
+                if (!this.currentTUrl) return;
                 try {
                     const castSession = cast.framework.CastContext.getInstance().getCurrentSession();
                     if (castSession) {
+                        // Detectar el tipo de contenido para que la TV no lo rechace
                         let contentType = 'video/mp4';
                         if (this.currentUrl.includes('.m3u8')) contentType = 'application/x-mpegurl';
-                        else if (this.currentUrl.includes('.mpd')) contentType = 'application/dash+xml';
-                        else if (this.currentUrl.includes('.mkv')) contentType = 'video/x-matroska';
+                        if (this.currentUrl.includes('.mpd')) contentType = 'application/dash+xml';
 
-                        // IMPORTANTE: Chromecast bloquea transmisiones HTTP directas o sin CORS. 
-                        // Al usar this.currentTUrl (el Proxy de Codetabs), el servidor proxy nos añade 
-                        // las cabeceras CORS necesarias y burla el bloqueo de User-Agent, permitiendo 
-                        // que la TV reproduzca el flujo de video (TS) sin problemas.
                         const mediaInfo = new chrome.cast.media.MediaInfo(this.currentTUrl, contentType);
-                        
-                        // Indicar si es Directo (LIVE) o Película (BUFFERED)
-                        const isVod = (this.videoEl.duration && isFinite(this.videoEl.duration) && this.videoEl.duration > 120);
-                        mediaInfo.streamType = isVod ? chrome.cast.media.StreamType.BUFFERED : chrome.cast.media.StreamType.LIVE;
-
                         const request = new chrome.cast.media.LoadRequest(mediaInfo);
                         
                         castSession.loadMedia(request).then(
