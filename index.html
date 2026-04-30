@@ -443,7 +443,7 @@
 
     <header class="glass-header">
         <div class="logo">
-            <i class="ri-live-fill"></i> Danko IPTV <span style="font-size: 0.5em; color: var(--primary); opacity: 0.8; font-weight: 600; margin-left: 5px;">v.28</span>
+            <i class="ri-live-fill"></i> Danko IPTV <span style="font-size: 0.5em; color: var(--primary); opacity: 0.8; font-weight: 600; margin-left: 5px;">v.29</span>
         </div>
         <div class="input-group">
             <button onclick="document.getElementById('localFileInput').click()" class="btn-local" title="Seleccionar archivo .M3U pesado desde tu equipo para evitar bloqueos"><i class="ri-folder-open-fill"></i> LOCAL</button>
@@ -1055,7 +1055,26 @@
                     return;
                 }
                 
-                // Compartimos limpiamente el enlace al menú de Android.
+                // TRUCO SUPREMO: Chrome Android prohíbe compartir archivos .m3u en el menú nativo por seguridad.
+                // Generamos el M3U mágico (con el User-Agent inyectado) pero lo camuflamos como un archivo .mp4 (.txt a veces oculta apps de video).
+                // Esto engaña a Chrome, forzando que abra el menú nativo de Compartir con las opciones de reproductores de video
+                // sin descargar nada permanentemente al celular. Al recibirlo, VLC y WVC leen el interior, descubren 
+                // que es código M3U, asumen la identidad de Mozilla/5.0 y reproducen el canal evadiendo a DiabloTV.
+                try {
+                    const m3uContent = `#EXTM3U\n#EXTINF:-1, Danko IPTV Stream\n#EXTVLCOPT:http-user-agent=Mozilla/5.0\n#EXTHTTP:{"User-Agent":"Mozilla/5.0"}\n${this.currentUrl}`;
+                    const blob = new Blob([m3uContent], { type: 'video/mp4' });
+                    const file = new File([blob], "stream.mp4", { type: 'video/mp4' });
+
+                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                        navigator.share({
+                            title: 'Danko IPTV',
+                            files: [file]
+                        }).catch(console.error);
+                        return; // Termina con éxito, mostrando el menú limpio de Android
+                    }
+                } catch (e) {}
+
+                // Fallback si el dispositivo no soporta compartir archivos por completo
                 if (navigator.share) {
                     navigator.share({
                         title: 'Danko IPTV',
