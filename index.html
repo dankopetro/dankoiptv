@@ -443,7 +443,7 @@
 
     <header class="glass-header">
         <div class="logo">
-            <i class="ri-live-fill"></i> Danko IPTV <span style="font-size: 0.5em; color: var(--primary); opacity: 0.8; font-weight: 600; margin-left: 5px;">v.27</span>
+            <i class="ri-live-fill"></i> Danko IPTV <span style="font-size: 0.5em; color: var(--primary); opacity: 0.8; font-weight: 600; margin-left: 5px;">v.28</span>
         </div>
         <div class="input-group">
             <button onclick="document.getElementById('localFileInput').click()" class="btn-local" title="Seleccionar archivo .M3U pesado desde tu equipo para evitar bloqueos"><i class="ri-folder-open-fill"></i> LOCAL</button>
@@ -1055,44 +1055,14 @@
                     return;
                 }
                 
-                const m3uContent = `#EXTM3U\n#EXTINF:-1, Danko IPTV Stream\n#EXTVLCOPT:http-user-agent=Mozilla/5.0\n#EXTHTTP:{"User-Agent":"Mozilla/5.0"}\n${this.currentUrl}`;
-                const blob = new Blob([m3uContent], { type: 'application/vnd.apple.mpegurl' });
-                
-                try {
-                    const file = new File([blob], "canal.m3u", { type: 'application/vnd.apple.mpegurl' });
-                    // navigator.share con archivos M3U suele ser bloqueado por Chrome en Android por seguridad.
-                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                        navigator.share({
-                            title: 'Danko IPTV',
-                            files: [file]
-                        }).catch(console.error);
-                        return;
-                    }
-                } catch (e) {}
-
-                // Si el navegador prohíbe compartir el archivo (que es lo que rompió el botón), 
-                // forzamos la descarga del archivo mágico M3U. El usuario solo debe darle a "Abrir" en su celular.
-                try {
-                    const blobUrl = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = blobUrl;
-                    a.download = 'canal_danko.m3u';
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(blobUrl);
-                    alert("Se ha descargado el archivo para evadir bloqueos. Toca 'Abrir' en la notificación y elige VLC o Web Video Caster.");
-                    return;
-                } catch (e) {}
-
-                // Fallback de emergencia pura
+                // Compartimos limpiamente el enlace al menú de Android.
                 if (navigator.share) {
                     navigator.share({
                         title: 'Danko IPTV',
                         url: this.currentUrl
                     }).catch(console.error);
                 } else {
-                    prompt("Copia este enlace:", this.currentUrl);
+                    prompt("Copia este enlace y ábrelo en tu app:", this.currentUrl);
                 }
             },
 
