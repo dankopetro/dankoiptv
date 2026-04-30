@@ -443,7 +443,7 @@
 
     <header class="glass-header">
         <div class="logo">
-            <i class="ri-live-fill"></i> Danko IPTV <span style="font-size: 0.5em; color: var(--primary); opacity: 0.8; font-weight: 600; margin-left: 5px;">v.29</span>
+            <i class="ri-live-fill"></i> Danko IPTV <span style="font-size: 0.5em; color: var(--primary); opacity: 0.8; font-weight: 600; margin-left: 5px;">v.30</span>
         </div>
         <div class="input-group">
             <button onclick="document.getElementById('localFileInput').click()" class="btn-local" title="Seleccionar archivo .M3U pesado desde tu equipo para evitar bloqueos"><i class="ri-folder-open-fill"></i> LOCAL</button>
@@ -1094,7 +1094,6 @@
                         let contentType = 'video/mp4';
                         if (this.currentUrl.includes('.m3u8')) contentType = 'application/x-mpegurl';
                         else if (this.currentUrl.includes('.mpd')) contentType = 'application/dash+xml';
-                        else if (this.currentUrl.includes('.ts') || /\/\d+$/.test(this.currentUrl)) contentType = 'video/mp2t';
                         else if (this.currentUrl.includes('.mkv')) contentType = 'video/x-matroska';
 
                         // IMPORTANTE: Chromecast no tiene bloqueos CORS. Le enviamos la URL original adaptada.
