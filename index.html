@@ -443,7 +443,7 @@
 
     <header class="glass-header">
         <div class="logo">
-            <i class="ri-live-fill"></i> Danko IPTV <span style="font-size: 0.5em; color: var(--primary); opacity: 0.8; font-weight: 600; margin-left: 5px;">v.30</span>
+            <i class="ri-live-fill"></i> Danko IPTV <span style="font-size: 0.5em; color: var(--primary); opacity: 0.8; font-weight: 600; margin-left: 5px;">v.31</span>
         </div>
         <div class="input-group">
             <button onclick="document.getElementById('localFileInput').click()" class="btn-local" title="Seleccionar archivo .M3U pesado desde tu equipo para evitar bloqueos"><i class="ri-folder-open-fill"></i> LOCAL</button>
@@ -1090,16 +1090,27 @@
                 try {
                     const castSession = cast.framework.CastContext.getInstance().getCurrentSession();
                     if (castSession) {
-                        // Detectar el tipo de contenido para que la TV no lo rechace
+                        let castUrl = this.currentUrl;
                         let contentType = 'video/mp4';
-                        if (this.currentUrl.includes('.m3u8')) contentType = 'application/x-mpegurl';
-                        else if (this.currentUrl.includes('.mpd')) contentType = 'application/dash+xml';
-                        else if (this.currentUrl.includes('.mkv')) contentType = 'video/x-matroska';
 
-                        // IMPORTANTE: Chromecast no tiene bloqueos CORS. Le enviamos la URL original adaptada.
-                        const mediaInfo = new chrome.cast.media.MediaInfo(this.currentUrl, contentType);
+                        // TRUCO MAGISTRAL PARA CHROMECAST:
+                        // El receptor por defecto de Chromecast NO soporta streams TS puros (el formato normal de Xtream).
+                        // Por eso se queda el logo cargando infinitamente sin dar error pero sin mostrar video.
+                        // Afortunadamente, los servidores Xtream pueden convertir el TS a HLS (.m3u8) en tiempo real.
+                        // Aquí transformamos la URL al vuelo al formato HLS que Chromecast ama y reproduce perfecto.
+                        const xtreamMatch = castUrl.match(/^(https?:\/\/[^\/]+)\/(?:live\/)?([^\/]+)\/([^\/]+)\/(\d+)(?:\.ts)?$/);
+                        if (xtreamMatch) {
+                            castUrl = `${xtreamMatch[1]}/live/${xtreamMatch[2]}/${xtreamMatch[3]}/${xtreamMatch[4]}.m3u8`;
+                        }
+
+                        if (castUrl.includes('.m3u8')) contentType = 'application/x-mpegurl';
+                        else if (castUrl.includes('.mpd')) contentType = 'application/dash+xml';
+                        else if (castUrl.includes('.mkv')) contentType = 'video/x-matroska';
+
+                        // IMPORTANTE: Chromecast no tiene bloqueos CORS. Le enviamos la URL adaptada.
+                        const mediaInfo = new chrome.cast.media.MediaInfo(castUrl, contentType);
                         
-                        // Indicar si es Directo (LIVE) o Película (BUFFERED) ayuda a que la TV no busque el final de un directo y se congele.
+                        // Indicar si es Directo (LIVE) o Película (BUFFERED)
                         const isVod = (this.videoEl.duration && isFinite(this.videoEl.duration) && this.videoEl.duration > 120);
                         mediaInfo.streamType = isVod ? chrome.cast.media.StreamType.BUFFERED : chrome.cast.media.StreamType.LIVE;
 
