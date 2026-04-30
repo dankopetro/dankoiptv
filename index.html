@@ -443,7 +443,7 @@
 
     <header class="glass-header">
         <div class="logo">
-            <i class="ri-live-fill"></i> Danko IPTV <span style="font-size: 0.5em; color: var(--primary); opacity: 0.8; font-weight: 600; margin-left: 5px;">v.34</span>
+            <i class="ri-live-fill"></i> Danko IPTV <span style="font-size: 0.5em; color: var(--primary); opacity: 0.8; font-weight: 600; margin-left: 5px;">v.35</span>
         </div>
         <div class="input-group">
             <button onclick="document.getElementById('localFileInput').click()" class="btn-local" title="Seleccionar archivo .M3U pesado desde tu equipo para evitar bloqueos"><i class="ri-folder-open-fill"></i> LOCAL</button>
@@ -1101,9 +1101,9 @@
                         castSession.loadMedia(request).then(
                             () => {
                                 console.log('Casting en proceso correctamente');
-                                // PAUSAR LOCALMENTE AL ENVIAR A TV
-                                this.videoEl.pause();
-                                document.getElementById('targetStatus').innerText = "📺 EN TV";
+                                // NOTA: Ya no pausamos el video local aquí. Si la TV rechaza el formato 
+                                // (como los TS crudos), al menos el celular sigue reproduciendo.
+                                document.getElementById('targetStatus').innerText = "📺 INTENTANDO TV...";
                             },
                             (err) => console.log('Error enviando al Chromecast', err)
                         );
