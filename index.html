@@ -457,7 +457,7 @@
 
     <header class="glass-header">
         <div class="logo">
-            <i class="ri-live-fill"></i> Danko IPTV <span style="font-size: 0.65rem; opacity: 0.6; margin-left: 8px; font-weight: 400;">v1.3.6 (VLC Core)</span>
+            <i class="ri-live-fill"></i> Danko IPTV <span style="font-size: 0.65rem; opacity: 0.6; margin-left: 8px; font-weight: 400;">v1.4.0 (VLC Core)</span>
         </div>
         <div class="input-group">
             <button onclick="document.getElementById('localFileInput').click()" class="btn-local" title="Seleccionar archivo .M3U pesado desde tu equipo para evitar bloqueos"><i class="ri-folder-open-fill"></i> LOCAL</button>
@@ -584,7 +584,7 @@
             
             // CORE
             init() {
-                console.log("%c Danko IPTV v1.3.5 - Cast SDK Polling Enabled ", "background: #2ecc71; color: #fff; font-weight: bold; padding: 4px;");
+                console.log("%c Danko IPTV v1.4.0 - Smart Proxy Enabled (HTTPS Fix) ", "background: #2ecc71; color: #fff; font-weight: bold; padding: 4px;");
                 if (window.location.protocol === 'file:') {
                     console.error("Chromecast NO funciona desde file://");
                 }
@@ -860,13 +860,19 @@
                 const isMpd = url.includes('.mpd');
                 const isTs = url.toLowerCase().endsWith('.ts') || /\/\d+$/.test(url) || url.includes('type=ts');
 
-                // 3. Gestión de Proxy (Necesario para Mixed Content y saltar bloqueos CORS)
+                // 3. Gestión de Proxy Inteligente (Filtro Anti-Bloqueo de Chrome)
                 const tunnelPrefix = "https://api.codetabs.com/v1/proxy/?quest=";
-                const needsProxy = !forceDirect && (url.startsWith('http:'));
+                const isHttpsPage = window.location.protocol === 'https:';
+                const isHttpStream = url.startsWith('http:');
+                
+                // Si la página es HTTPS y el canal es HTTP, EL PROXY ES OBLIGATORIO (Mixed Content)
+                // En otros casos, usamos Directo (VLC Style)
+                const needsProxy = (isHttpsPage && isHttpStream) || (forceDirectParam === 'proxy');
+                
                 const tUrl = needsProxy ? (tunnelPrefix + encodeURIComponent(url)) : url;
                 this.currentTUrl = tUrl;
 
-                console.log(`[VLC Core v1.2.0] Cargando: ${isTs ? 'TS' : isM3u8 ? 'HLS' : 'Direct'}`);
+                console.log(`[VLC Core] Modo: ${needsProxy ? 'PROXY (Auto-HTTPS)' : 'DIRECTO'}`);
 
                 // 4. Inicialización con Buffers Masivos (Filosofía VLC: Estabilidad > Latencia)
                 if (isM3u8 && window.Hls && Hls.isSupported()) {
