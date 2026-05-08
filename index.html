@@ -457,7 +457,7 @@
 
     <header class="glass-header">
         <div class="logo">
-            <i class="ri-live-fill"></i> Danko IPTV <span style="font-size: 0.65rem; opacity: 0.6; margin-left: 8px; font-weight: 400;">v1.4.4 (VLC Core)</span>
+            <i class="ri-live-fill"></i> Danko IPTV <span style="font-size: 0.65rem; opacity: 0.6; margin-left: 8px; font-weight: 400;">v1.4.5 (VLC Core)</span>
         </div>
         <div class="input-group">
             <button onclick="document.getElementById('localFileInput').click()" class="btn-local" title="Seleccionar archivo .M3U pesado desde tu equipo para evitar bloqueos"><i class="ri-folder-open-fill"></i> LOCAL</button>
@@ -592,13 +592,35 @@
             
             // CORE
             init() {
-                console.log("%c Danko IPTV v1.4.4 - Stall Watchdog Active ", "background: #2ecc71; color: #fff; font-weight: bold; padding: 4px;");
-                if (window.location.protocol === 'file:') {
-                    console.error("Chromecast NO funciona desde file://");
-                }
+                console.log("%c Danko IPTV v1.4.5 - Hard Watchdog Enabled ", "background: #2ecc71; color: #fff; font-weight: bold; padding: 4px;");
                 this.setupTimeUpdate();
                 this.setupControlsUI();
                 this.setupPullToRefresh();
+                
+                // --- HARD STALL WATCHDOG (v1.4.5) ---
+                // Vigilante independiente del navegador: si el video se clava, reconecta a los 3s
+                setInterval(() => {
+                    const v = this.videoEl;
+                    const now = Date.now();
+                    if (v && !v.paused && this.currentUrl) {
+                        const cur = v.currentTime;
+                        if (cur > 0) {
+                            if (cur !== this.lastTime) {
+                                this.lastTime = cur;
+                                this.lastCheck = now;
+                            } else if (now - this.lastCheck > 3500) { // 3.5s de congelamiento real
+                                console.warn("Watchdog: Congelamiento detectado. Rotando proxy...");
+                                this.lastCheck = now;
+                                this.proxyIndex++;
+                                this.playStream(this.currentUrl, false, true);
+                            }
+                        }
+                    }
+                }, 1000);
+
+                if (window.location.protocol === 'file:') {
+                    console.error("Chromecast NO funciona desde file://");
+                }
             },
 
             // FORZAR MENU DE CHROMECAST (Mobile Fallback)
@@ -960,20 +982,6 @@
                     const cur = v.currentTime;
                     const dur = v.duration;
                     const isLive = !isFinite(dur) || dur === 0 || (dur > 0 && dur < 120);
-
-                    // --- STALL WATCHDOG (VLC Engine v1.4.4) ---
-                    const now = Date.now();
-                    if (!v.paused && cur > 0) {
-                        if (cur !== this.lastTime) {
-                            this.lastTime = cur;
-                            this.lastCheck = now;
-                        } else if (now - this.lastCheck > 2500) { // 2.5s congelado
-                            console.warn("Watchdog: Video congelado detectado. Forzando rotación...");
-                            this.lastCheck = now;
-                            this.proxyIndex++;
-                            this.playStream(this.currentUrl, false, true);
-                        }
-                    }
 
                     // Simplificación total de UI
                     document.getElementById('currentTime').innerText = this.formatTime(cur);
