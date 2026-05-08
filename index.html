@@ -457,13 +457,12 @@
 
     <header class="glass-header">
         <div class="logo">
-            <i class="ri-live-fill"></i> Danko IPTV <span style="font-size: 0.65rem; opacity: 0.6; margin-left: 8px; font-weight: 400;">v1.4.1 (VLC Core)</span>
+            <i class="ri-live-fill"></i> Danko IPTV <span style="font-size: 0.65rem; opacity: 0.6; margin-left: 8px; font-weight: 400;">v1.4.2 (VLC Core)</span>
         </div>
         <div class="input-group">
             <button onclick="document.getElementById('localFileInput').click()" class="btn-local" title="Seleccionar archivo .M3U pesado desde tu equipo para evitar bloqueos"><i class="ri-folder-open-fill"></i> LOCAL</button>
             <input type="text" id="urlInput" placeholder="URL remota o enlace directo...">
             <button class="btn-load" onclick="app.processInput()"><i class="ri-search-eye-line"></i> CARGAR</button>
-            <button id="proxyToggle" class="btn-local" style="display:none; background: #e74c3c;" onclick="app.toggleProxyManual()">DESACTIVAR PROXY</button>
             <input type="file" id="localFileInput" accept=".m3u,.m3u8,.txt" style="display:none" onchange="app.handleLocalFile(event)">
         </div>
     </header>
@@ -585,10 +584,7 @@
             
             // CORE
             init() {
-                console.log("%c Danko IPTV v1.4.1 - Proxy Override Mode ", "background: #2ecc71; color: #fff; font-weight: bold; padding: 4px;");
-                if (window.location.protocol === 'https:') {
-                    document.getElementById('proxyToggle').style.display = 'block';
-                }
+                console.log("%c Danko IPTV v1.4.2 - Auto-Resumption Mode ", "background: #2ecc71; color: #fff; font-weight: bold; padding: 4px;");
                 if (window.location.protocol === 'file:') {
                     console.error("Chromecast NO funciona desde file://");
                 }
@@ -873,19 +869,17 @@
                 const isMpd = url.includes('.mpd');
                 const isTs = url.toLowerCase().endsWith('.ts') || /\/\d+$/.test(url) || url.includes('type=ts');
 
-                // 3. Gestión de Proxy Inteligente (Filtro Anti-Bloqueo de Chrome)
-                const tunnelPrefix = "https://api.codetabs.com/v1/proxy/?quest=";
+                // 3. Gestión de Proxy Automática con Auto-Resurrección
+                const tunnelPrefix = "https://corsproxy.io/?"; 
                 const isHttpsPage = window.location.protocol === 'https:';
                 const isHttpStream = url.startsWith('http:');
                 
-                // Si la página es HTTPS y el canal es HTTP, EL PROXY ES OBLIGATORIO (Mixed Content)
-                // A menos que el usuario lo desactive manualmente (requiere permisos en el navegador)
-                const needsProxy = (isHttpsPage && isHttpStream && !this.manualProxyDisabled) || (forceDirectParam === 'proxy');
-                
+                // Forzamos proxy solo si es estrictamente necesario (Mixed Content)
+                const needsProxy = isHttpsPage && isHttpStream;
                 const tUrl = needsProxy ? (tunnelPrefix + encodeURIComponent(url)) : url;
                 this.currentTUrl = tUrl;
 
-                console.log(`[VLC Core] Modo: ${needsProxy ? 'PROXY' : 'DIRECTO'}`);
+                console.log(`[VLC Core] Modo: ${needsProxy ? 'PROXY AUTOMÁTICO' : 'DIRECTO'}`);
 
                 // 4. Inicialización con Buffers Masivos (Filosofía VLC: Estabilidad > Latencia)
                 if (isM3u8 && window.Hls && Hls.isSupported()) {
@@ -918,7 +912,12 @@
                     this.playerInstance.attachMediaElement(v);
                     this.playerInstance.load();
                     this.playerInstance.play().catch(() => { v.src = tUrl; v.play(); });
-                    this.playerInstance.on(mpegts.Events.ERROR, () => this.triggerReconnect());
+                    
+                    // AUTO-RESURRECCIÓN: Si el proxy corta a los 30s, reconectamos en silencio instantáneamente
+                    this.playerInstance.on(mpegts.Events.ERROR, () => {
+                        console.log("Corte detectado (Proxy). Reanudando señal...");
+                        this.playStream(this.currentUrl, false, true); 
+                    });
                 }
                 else {
                     v.src = tUrl;
