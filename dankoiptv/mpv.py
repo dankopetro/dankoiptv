@@ -40,60 +40,45 @@ def _diag():
     return " | ".join(lines)
 
 def _load_libmpv_handle():
-    """Intenta cargar libmpv por varios caminos y verifica mpv_client_api_version."""
+    """Carga libmpv priorizando rutas absolutas (AppImage no tiene ld cache)."""
     tried = []
-    # a) python-mpv (pip/apt) como fallback primero — suele tener lógica de carga más probada
-    try:
-        import mpv as py_mpv  # type: ignore
-        # python-mpv expone _libmpv si ya cargó
-        if hasattr(py_mpv, "_libmpv") or hasattr(py_mpv, "libmpv"):
-            log.info("python-mpv package detected, but using ctypes path for wid control")
-    except Exception:
-        pass
-
-    candidates = []
+    candidates = [
+        "/usr/lib/x86_64-linux-gnu/libmpv.so.2",
+        "/usr/lib/x86_64-linux-gnu/libmpv.so.2.2.0",
+        "/usr/lib/x86_64-linux-gnu/libmpv.so.1",
+        "libmpv.so.2",
+        "libmpv.so.1",
+    ]
+    # find_library al final para no depender de ldconfig dentro de AppImage
     try:
         lib = ctypes.util.find_library("mpv")
-        if lib:
+        if lib and lib not in candidates:
             candidates.append(lib)
     except Exception as e:
         tried.append(f"find_library: {e}")
-    candidates += ["/usr/lib/x86_64-linux-gnu/libmpv.so.2", "/usr/lib/x86_64-linux-gnu/libmpv.so.1", "libmpv.so.2", "libmpv.so.1"]
 
     last_err = None
     for cand in candidates:
         for mode in [ctypes.RTLD_GLOBAL, 0]:
             try:
                 h = ctypes.CDLL(cand, mode=mode)
-                # verificar símbolo crítico y api version
                 h.mpv_client_api_version.restype = ctypes.c_ulong
                 ver = h.mpv_client_api_version()
                 if ver == 0:
                     tried.append(f"{cand} mode={mode}: api_version 0")
                     continue
-                # probar mpv_create una vez
                 h.mpv_create.restype = ctypes.c_void_p
-                test = h.mpv_create()
-                if test:
-                    # liberar test handle
-                    try:
-                        h.mpv_terminate_destroy.argtypes = [ctypes.c_void_p]
-                        h.mpv_terminate_destroy(test)
-                    except Exception:
-                        pass
-                    log.info(f"libmpv OK {cand} mode={mode} api=0x{ver:x}")
-                    return h
-                else:
-                    tried.append(f"{cand} mode={mode}: mpv_create NULL ver=0x{ver:x}")
+                # no hacer test create/destroy aquí — deja el estado global limpio
+                log.info(f"libmpv OK {cand} mode={mode} api=0x{ver:x}")
+                return h
             except Exception as e:
                 last_err = e
                 tried.append(f"{cand} mode={mode}: {e}")
     diag = _diag()
     raise RuntimeError(
-        "No se pudo crear mpv (mpv_create NULL). "
-        "Instala/repara: sudo apt update && sudo apt install --reinstall libmpv2 mpv && sudo ldconfig\n"
-        f"Intentos: {' | '.join(tried)}\nDiagnóstico: {diag}\n"
-        f"Último error: {last_err}"
+        "No se pudo cargar libmpv. "
+        "sudo apt update && sudo apt install --reinstall libmpv2 mpv && sudo ldconfig\n"
+        f"Intentos: {' | '.join(tried)}\nDiagnóstico: {diag}\nÚltimo error: {last_err}"
     )
 
 libmpv = _load_libmpv_handle()
