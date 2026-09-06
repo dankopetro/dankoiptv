@@ -1,24 +1,64 @@
 # -*- coding: utf-8 -*-
-"""PyQt6 UI — categorías, persistencia híbrida, recarga, WA_NativeWindow."""
+"""PyQt6 UI — categorías, persistencia híbrida, recarga, WA_NativeWindow + skins naranja."""
 import threading
 from PyQt6.QtCore import Qt, pyqtSignal, QObject
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QListWidget, QLineEdit, QPushButton, QLabel, QSplitter, QFrame,
-    QMessageBox, QInputDialog, QComboBox, QStatusBar
+    QMessageBox, QInputDialog, QComboBox, QStatusBar, QMenuBar
 )
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QAction
 
 from .player import IPTVPlayer
 from .iptv import PlaylistParser
 from .config import load_config, save_config, save_cache, load_cache
 
-# Límite para no congelar QListWidget con 300k+ canales
 DISPLAY_LIMIT = 2000
+
+# Skins — naranja oscuro default, dark mode; fuente Ubuntu/Noto
+SKINS = {
+    "Naranja Oscuro": {"accent": "#FF6A00", "accent2": "#FF8C32", "bg": "#121212", "panel": "#1E1E1E", "sel": "#2A1A0A", "text": "#EAEAEA", "sub": "#B0A090"},
+    "Naranja Neón": {"accent": "#FF7A00", "accent2": "#FFB347", "bg": "#0F0F0F", "panel": "#1A1A1A", "sel": "#331A00", "text": "#FFF0E0", "sub": "#CCAA80"},
+    "Ámbar Dorado": {"accent": "#FFAB00", "accent2": "#FFD740", "bg": "#1A160F", "panel": "#24200F", "sel": "#332A0A", "text": "#FFF8E0", "sub": "#C9B080"},
+    "Azul Nocturno": {"accent": "#00A8FF", "accent2": "#4DB8FF", "bg": "#0F1419", "panel": "#1A2430", "sel": "#0A1E33", "text": "#E0F0FF", "sub": "#80A0B8"},
+    "Verde Esmeralda": {"accent": "#00C853", "accent2": "#69F0AE", "bg": "#0F1A14", "panel": "#1A2E22", "sel": "#0A3320", "text": "#E0FFE8", "sub": "#80B898"},
+    "Violeta Neón": {"accent": "#7C4DFF", "accent2": "#B388FF", "bg": "#14101E", "panel": "#1E1A2E", "sel": "#1A0A33", "text": "#F0E6FF", "sub": "#A080C0"},
+    "Rojo Carmesí": {"accent": "#FF1744", "accent2": "#FF616F", "bg": "#1A1014", "panel": "#2E1A1E", "sel": "#330A14", "text": "#FFE0E6", "sub": "#C08090"},
+}
+FONTS = ["Ubuntu", "Noto Sans", "Sans Serif"]
 
 
 class _SignalBridge(QObject):
     done = pyqtSignal(object)
+
+def _app_font(family="Ubuntu"):
+    f = QFont(family, 10)
+    f.setWeight(QFont.Weight.DemiBold)
+    # fallback si no existe Ubuntu, usa Noto Sans
+    if family == "Ubuntu" and "Ubuntu" not in [f.family() for f in [QFont("Ubuntu")]]:
+        f = QFont("Noto Sans", 10); f.setWeight(QFont.Weight.DemiBold)
+    return f
+
+def _skin_stylesheet(skin, font_family):
+    c = SKINS.get(skin, SKINS["Naranja Oscuro"])
+    return f"""
+    QMainWindow, QWidget {{ background: {c['bg']}; color: {c['text']}; font-family: '{font_family}'; }}
+    QSplitter::handle {{ background: {c['panel']}; }}
+    QListWidget {{ background: {c['panel']}; border: 1px solid {c['accent']}; border-radius: 8px; padding: 4px; }}
+    QListWidget::item:selected {{ background: {c['sel']}; color: {c['accent2']}; border-left: 3px solid {c['accent']}; }}
+    QLineEdit, QComboBox {{ background: {c['panel']}; border: 1px solid {c['accent']}; border-radius: 6px; padding: 6px; color: {c['text']}; }}
+    QLineEdit:focus, QComboBox:focus {{ border: 1px solid {c['accent2']}; }}
+    QPushButton {{ background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 {c['accent']}, stop:1 {c['accent2']}); color: #0A0A0A; border: none; border-radius: 7px; padding: 7px 12px; font-weight: 600; }}
+    QPushButton:hover {{ background: {c['accent2']}; }}
+    QPushButton:pressed {{ background: {c['accent']}; }}
+    QStatusBar {{ background: {c['panel']}; border-top: 1px solid {c['accent']}; }}
+    QMenuBar {{ background: {c['panel']}; border-bottom: 1px solid {c['accent']}; }}
+    QMenuBar::item:selected {{ background: {c['sel']}; color: {c['accent2']}; }}
+    QMenu {{ background: {c['panel']}; border: 1px solid {c['accent']}; }}
+    QMenu::item:selected {{ background: {c['sel']}; color: {c['accent2']}; }}
+    QFrame#videoFrame {{ border: 2px solid {c['accent']}; border-radius: 10px; }}
+    QLabel#title {{ color: {c['accent']}; }}
+    """
 
 class DankoWindow(QMainWindow):
     def __init__(self):
@@ -31,12 +71,51 @@ class DankoWindow(QMainWindow):
         self.player = None
         self._cfg = load_config()
         self._bridge = _SignalBridge()
+        # skin + font desde config
+        self._skin = self._cfg.get("skin", "Naranja Oscuro")
+        self._font_family = self._cfg.get("font_family", "Ubuntu")
+        # aplicar fuente y skin global
+        try:
+            from PyQt6.QtWidgets import QApplication
+            QApplication.instance().setFont(_app_font(self._font_family))
+        except Exception:
+            pass
+        self._apply_skin()
         self.init_ui()
         self.setStatusBar(QStatusBar())
-        # carga híbrida: cache inmediata + refresh background
         self._load_initial()
 
+    def _apply_skin(self):
+        try:
+            self.setStyleSheet(_skin_stylesheet(self._skin, self._font_family))
+            # reaplicar fuente
+            from PyQt6.QtWidgets import QApplication
+            if QApplication.instance():
+                QApplication.instance().setFont(_app_font(self._font_family))
+        except Exception:
+            pass
+
     def init_ui(self):
+        # menubar con Ajustes -> Skins/Font
+        try:
+            mb = QMenuBar(self)
+            self.setMenuBar(mb)
+            m_aj = mb.addMenu("Ajustes")
+            m_skin = m_aj.addMenu("Tema (Skin)")
+            for name in SKINS.keys():
+                act = QAction(name, self, checkable=True)
+                act.setChecked(name == self._skin)
+                act.triggered.connect(lambda _, n=name: self._set_skin(n))
+                m_skin.addAction(act)
+            m_font = m_aj.addMenu("Fuente")
+            for fn in FONTS:
+                act = QAction(fn, self, checkable=True)
+                act.setChecked(fn == self._font_family)
+                act.triggered.connect(lambda _, f=fn: self._set_font(f))
+                m_font.addAction(act)
+        except Exception:
+            pass
+
         central = QWidget(self)
         self.setCentralWidget(central)
         main = QHBoxLayout(central)
@@ -48,8 +127,23 @@ class DankoWindow(QMainWindow):
         sl = QVBoxLayout(sidebar)
         sl.setContentsMargins(10, 10, 10, 10)
         title = QLabel("Dankoiptv")
-        title.setFont(QFont("Sans Serif", 16, QFont.Weight.Bold))
+        title.setObjectName("title")
+        tf = QFont(self._font_family, 18); tf.setWeight(QFont.Weight.Bold)
+        title.setFont(tf)
         sl.addWidget(title)
+        # selector rápido de skin en sidebar también
+        self.skin_combo = QComboBox()
+        for k in SKINS.keys():
+            self.skin_combo.addItem(k)
+        self.skin_combo.setCurrentText(self._skin)
+        self.skin_combo.currentTextChanged.connect(self._set_skin)
+        sl.addWidget(self.skin_combo)
+        self.font_combo = QComboBox()
+        for fn in FONTS:
+            self.font_combo.addItem(fn)
+        self.font_combo.setCurrentText(self._font_family)
+        self.font_combo.currentTextChanged.connect(self._set_font)
+        sl.addWidget(self.font_combo)
 
         self.search = QLineEdit()
         self.search.setPlaceholderText("Buscar canal...")
@@ -98,8 +192,8 @@ class DankoWindow(QMainWindow):
                     pass
                 super().mouseDoubleClickEvent(ev)
         self.video_frame = VideoFrame(self)
+        self.video_frame.setObjectName("videoFrame")
         rl.addWidget(self.video_frame, stretch=1)
-        # también doble clic en la ventana completa alterna fullscreen
         self._is_full = False
 
         ctrl = QWidget()
@@ -334,8 +428,33 @@ class DankoWindow(QMainWindow):
             self.player = None
             self.statusBar().showMessage("Reproductor reiniciará en próximo Play", 3000)
 
+    def _set_skin(self, name):
+        if name not in SKINS:
+            return
+        self._skin = name
+        save_config({"skin": name})
+        self._cfg["skin"] = name
+        self._apply_skin()
+        # actualizar combos sin loop
+        try:
+            self.skin_combo.blockSignals(True); self.skin_combo.setCurrentText(name); self.skin_combo.blockSignals(False)
+        except Exception:
+            pass
+        self.statusBar().showMessage(f"Tema: {name}", 3000)
+
+    def _set_font(self, fam):
+        self._font_family = fam
+        save_config({"font_family": fam})
+        self._cfg["font_family"] = fam
+        self._apply_skin()
+        try:
+            self.font_combo.blockSignals(True); self.font_combo.setCurrentText(fam); self.font_combo.blockSignals(False)
+        except Exception:
+            pass
+        self.statusBar().showMessage(f"Fuente: {fam}", 3000)
+
     def closeEvent(self, event):
-        save_config({"last_group": self.group_combo.currentText()})
+        save_config({"last_group": self.group_combo.currentText(), "skin": self._skin, "font_family": self._font_family})
         if self.player:
             try:
                 self.player.stop()

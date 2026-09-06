@@ -1,3 +1,3 @@
-__version__ = "1.1e-20260906-1514"
+__version__ = "1.1f-20260906-1543"
 __app_name__ = "Dankoiptv"
-# PEP440 for pip: 1.1.4+20260906.1504
+# PEP440: 1.1.5+20260906.1543 — AppImage usa 1.1f fecha para diferenciar tests v1
