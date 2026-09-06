@@ -1,35 +1,6 @@
-dankoiptv (1.1.6-1) unstable; urgency=medium
+dankoiptv (1.1g-20260906-1610) unstable; urgency=medium
 
-  * Skins naranja oscuro + 6 variantes, fuente Ubuntu/Noto, selector en Ajustes.
+  * Reconstrucción completa: motor seamless keep-open + eof cascade,
+    doble clic fullscreen, skins naranja + fuente Ubuntu en Ajustes.
 
- -- Danko Petro <danko@local>  Sat, 06 Sep 2026 15:43:00 +0000
-
-dankoiptv (1.1.5-1) unstable; urgency=medium
-
-  * Fix segfault stop/play, reproducción AGENTS (keep-open), doble clic fullscreen.
-
- -- Danko Petro <danko@local>  Sat, 06 Sep 2026 15:14:00 +0000
-
-dankoiptv (1.1.4-1) unstable; urgency=medium
-
-  * Fix categorías no aparecen + lista 344k: signal thread-safe + límite 2000.
-
- -- Danko Petro <danko@local>  Sat, 06 Sep 2026 15:04:00 +0000
-
-dankoiptv (1.1c-20260906-1450) unstable; urgency=medium
-
-  * Fix locale en AppRun + main antes de importar mpv.
-
- -- Danko Petro <danko@local>  Sat, 06 Sep 2026 14:50:00 +0000
-
-dankoiptv (1.1b-20260906-1448) unstable; urgency=medium
-
-  * Fix locale LC_NUMERIC=C + AppImage versionado.
-
- -- Danko Petro <danko@local>  Sat, 06 Sep 2026 14:48:00 +0000
-
-dankoiptv (1.0.0-1) unstable; urgency=medium
-
-  * Initial release for Linux Mint 22.3+.
-
- -- Danko Petro <danko@local>  Sun, 23 Aug 2026 12:00:00 +0000
+ -- Danko Petro <danko@example.com>  Sun, 06 Sep 2026 16:10:00 +0000
