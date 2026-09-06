@@ -186,18 +186,30 @@ class MPV:
         self._ev_thread = threading.Thread(target=self._event_loop, daemon=True)
         self._ev_thread.start()
 
+    def _valid(self):
+        return self.handle is not None and self._running
+
     def set_option_string(self, name, value):
+        if not self._valid():
+            return
         with self._cmd_lock:
+            if not self.handle:
+                return
             rc = libmpv.mpv_set_option_string(self.handle, name.encode(), str(value).encode())
             if rc < 0:
                 log.warning(f"set_option_string {name} failed: {_err_str(rc)}")
 
     def command(self, *args):
+        if not self._valid():
+            log.warning(f"command {args} ignored — handle invalid")
+            return -1
         c_args = (ctypes.c_char_p * (len(args) + 1))()
         for i, a in enumerate(args):
             c_args[i] = str(a).encode()
         c_args[len(args)] = None
         with self._cmd_lock:
+            if not self.handle:
+                return -1
             rc = libmpv.mpv_command(self.handle, c_args)
         if rc < 0:
             log.warning(f"mpv command {args} failed: {_err_str(rc)}")
@@ -210,8 +222,12 @@ class MPV:
         return self.command("stop")
 
     def set_property(self, name, value):
+        if not self._valid():
+            return
         b = name.encode()
         with self._cmd_lock:
+            if not self.handle:
+                return
             if isinstance(value, bool):
                 v = ctypes.c_int(1 if value else 0)
                 rc = libmpv.mpv_set_property(self.handle, b, MPV_FORMAT_FLAG, ctypes.byref(v))
@@ -228,8 +244,12 @@ class MPV:
             log.warning(f"set_property {name}={value} failed: {_err_str(rc)}")
 
     def get_property(self, name, fmt=MPV_FORMAT_STRING):
+        if not self._valid():
+            return None
         b = name.encode()
         with self._cmd_lock:
+            if not self.handle:
+                return None
             if fmt == MPV_FORMAT_STRING:
                 v = ctypes.c_char_p()
                 rc = libmpv.mpv_get_property(self.handle, b, MPV_FORMAT_STRING, ctypes.byref(v))
@@ -249,7 +269,11 @@ class MPV:
         return None
 
     def observe_property(self, name, reply_userdata=0, fmt=MPV_FORMAT_STRING):
+        if not self._valid():
+            return
         with self._cmd_lock:
+            if not self.handle:
+                return
             rc = libmpv.mpv_observe_property(self.handle, reply_userdata, name.encode(), fmt)
             if rc < 0:
                 log.warning(f"observe {name} failed: {_err_str(rc)}")
@@ -263,16 +287,32 @@ class MPV:
 
     def _event_loop(self):
         while self._running:
-            ev_ptr = libmpv.mpv_wait_event(self.handle, 0.5)
+            try:
+                if not self.handle:
+                    break
+                ev_ptr = libmpv.mpv_wait_event(self.handle, 0.5)
+            except Exception:
+                break
             if not ev_ptr:
                 continue
-            ev = ctypes.cast(ev_ptr, ctypes.POINTER(MpvEvent)).contents
-            if ev.event_id == 0:
+            try:
+                ev = ctypes.cast(ev_ptr, ctypes.POINTER(MpvEvent)).contents
+            except Exception:
+                break
+            if ev.event_id == 0:  # MPV_EVENT_NONE
                 continue
+            if ev.event_id == 1:  # MPV_EVENT_SHUTDOWN
+                break
             if ev.event_id == 7 and ev.data:
-                prop = ctypes.cast(ev.data, ctypes.POINTER(MpvEventProperty)).contents
+                try:
+                    prop = ctypes.cast(ev.data, ctypes.POINTER(MpvEventProperty)).contents
+                except Exception:
+                    continue
                 if prop.name:
-                    pname = prop.name.decode()
+                    try:
+                        pname = prop.name.decode()
+                    except Exception:
+                        continue
                     if pname in self._property_cbs:
                         cb, fmt = self._property_cbs[pname]
                         val = None
@@ -299,6 +339,16 @@ class MPV:
 
     def terminate(self):
         self._running = False
-        if self.handle:
-            libmpv.mpv_terminate_destroy(self.handle)
-            self.handle = None
+        # despertar wait_event y esperar hilo antes de destruir
+        try:
+            if self.handle:
+                # enviar wakeup via terminate_destroy que interrumpe wait_event
+                libmpv.mpv_terminate_destroy(self.handle)
+        except Exception:
+            pass
+        try:
+            if hasattr(self, '_ev_thread') and self._ev_thread.is_alive():
+                self._ev_thread.join(timeout=1.0)
+        except Exception:
+            pass
+        self.handle = None

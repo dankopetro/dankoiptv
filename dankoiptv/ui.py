@@ -80,11 +80,27 @@ class DankoWindow(QMainWindow):
         right = QWidget()
         rl = QVBoxLayout(right)
         rl.setContentsMargins(0, 0, 0, 0)
-        self.video_frame = QFrame()
-        self.video_frame.setStyleSheet("background-color: black;")
-        self.video_frame.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)
-        self.video_frame.setAttribute(Qt.WidgetAttribute.WA_DontCreateNativeAncestors, True)
+        # contenedor de video con doble clic para maximizar/fullscreen (AGENTS: ventana embebida, no proceso externo)
+        class VideoFrame(QFrame):
+            def __init__(self, parent_win):
+                super().__init__()
+                self._win = parent_win
+                self.setStyleSheet("background-color: black;")
+                self.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)
+                self.setAttribute(Qt.WidgetAttribute.WA_DontCreateNativeAncestors, True)
+            def mouseDoubleClickEvent(self, ev):
+                try:
+                    if self._win.isFullScreen():
+                        self._win.showNormal()
+                    else:
+                        self._win.showFullScreen()
+                except Exception:
+                    pass
+                super().mouseDoubleClickEvent(ev)
+        self.video_frame = VideoFrame(self)
         rl.addWidget(self.video_frame, stretch=1)
+        # también doble clic en la ventana completa alterna fullscreen
+        self._is_full = False
 
         ctrl = QWidget()
         cl = QHBoxLayout(ctrl)
@@ -94,6 +110,10 @@ class DankoWindow(QMainWindow):
         self.stop_btn = QPushButton("Stop")
         self.stop_btn.clicked.connect(self.stop_playback)
         cl.addWidget(self.stop_btn)
+        self.fs_btn = QPushButton("⛶ Fullscreen")
+        self.fs_btn.setToolTip("Doble clic en video también alterna pantalla completa (Esc para salir)")
+        self.fs_btn.clicked.connect(self.toggle_fullscreen)
+        cl.addWidget(self.fs_btn)
         cl.addStretch()
         self.now_label = QLabel("Sin reproducción")
         self.now_label.setStyleSheet("color: #888;")
@@ -273,14 +293,46 @@ class DankoWindow(QMainWindow):
             except Exception as e:
                 QMessageBox.warning(self, "Reproducción", f"Error: {e}")
 
+    def toggle_fullscreen(self):
+        if self.isFullScreen():
+            self.showNormal()
+        else:
+            self.showFullScreen()
+
+    def keyPressEvent(self, ev):
+        from PyQt6.QtCore import Qt as _Qt
+        if ev.key() == _Qt.Key.Key_Escape and self.isFullScreen():
+            self.showNormal()
+            return
+        if ev.key() == _Qt.Key.Key_F11:
+            self.toggle_fullscreen()
+            return
+        super().keyPressEvent(ev)
+
+    def mouseDoubleClickEvent(self, ev):
+        # doble clic en cualquier parte también alterna fullscreen (como pide el usuario)
+        self.toggle_fullscreen()
+        super().mouseDoubleClickEvent(ev)
+
     def resume_playback(self):
         if self.player and self.player.current_url:
-            self.player.play(self.player.current_url, is_live=True)
+            try:
+                self.player.play(self.player.current_url, is_live=True)
+            except Exception as e:
+                from PyQt6.QtWidgets import QMessageBox as _MB
+                _MB.warning(self, "Play", f"Error al reproducir: {e}")
 
     def stop_playback(self):
         if self.player:
-            self.player.stop()
+            try:
+                self.player.stop()
+            except Exception:
+                pass
             self.now_label.setText("Sin reproducción")
+        # asegurar que player siga válido para próximo play (evita segfault)
+        if self.player and (not self.player.mpv or not self.player.mpv.handle):
+            self.player = None
+            self.statusBar().showMessage("Reproductor reiniciará en próximo Play", 3000)
 
     def closeEvent(self, event):
         save_config({"last_group": self.group_combo.currentText()})
