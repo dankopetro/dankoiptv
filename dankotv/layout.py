@@ -12,7 +12,7 @@ TOOLBAR = [
     {"id": "record", "label": "⏺", "slot": "toggle_record", "tip": "Grabar (R)"},
     {"id": "shot", "label": "📷", "slot": "screenshot", "tip": "Captura (H)"},
     {"id": "mute", "label": "🔇", "slot": "toggle_mute", "tip": "Silenciar (M)"},
-    {"id": "fs", "label": "⛶", "slot": "toggle_fullscreen", "tip": "Pantalla completa (F)"},
+    {"id": "fs", "label": "⛶", "slot": "toggle_fullscreen", "tip": "Maximizar video (doble clic / F11 / Esc)"},
 ]
 
 MENUS = {
@@ -22,7 +22,7 @@ MENUS = {
         {"id": "reload", "label": "↻ Recargar lista", "slot": "reload_list"},
     ],
     "Ver": [
-        {"id": "fs2", "label": "Pantalla completa", "slot": "toggle_fullscreen"},
+        {"id": "fs2", "label": "Maximizar video", "slot": "toggle_fullscreen"},
         {"id": "skin", "label": "Tema", "slot": "cycle_skin"},
         {"id": "font", "label": "Fuente", "slot": "cycle_font"},
     ],
