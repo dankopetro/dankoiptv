@@ -1,38 +1,102 @@
 # -*- coding: utf-8 -*-
-"""Robust libmpv ctypes binding — wid INT64, FLAG separados, locks sin deadlock."""
+"""Robust libmpv binding — diag, fallback python-mpv, wid INT64 fix."""
 import ctypes
 import ctypes.util
 import logging
+import os
+import subprocess
 import threading
 
 log = logging.getLogger("dankoiptv.mpv")
 
-def _find_libmpv():
+MPV_FORMAT_NONE = 0
+MPV_FORMAT_STRING = 1
+MPV_FORMAT_OSD_STRING = 2
+MPV_FORMAT_FLAG = 3
+MPV_FORMAT_INT64 = 4
+MPV_FORMAT_DOUBLE = 5
+
+def _diag():
+    """Colecta diagnóstico para mensaje de error."""
+    lines = []
+    try:
+        lines.append(f"find_library(mpv)={ctypes.util.find_library('mpv')}")
+    except Exception as e:
+        lines.append(f"find_library error: {e}")
+    for p in ["/usr/lib/x86_64-linux-gnu/libmpv.so.2", "/usr/lib/x86_64-linux-gnu/libmpv.so.2.2.0", "/usr/lib/x86_64-linux-gnu/libmpv.so.1"]:
+        lines.append(f"{p} exists={os.path.exists(p)}")
+    try:
+        out = subprocess.run(["ldd", "/usr/lib/x86_64-linux-gnu/libmpv.so.2"], capture_output=True, text=True, timeout=3)
+        # primera línea con 'not found'
+        if "not found" in out.stdout:
+            lines.append("ldd: " + [l for l in out.stdout.splitlines() if "not found" in l][0])
+    except Exception as e:
+        lines.append(f"ldd error: {e}")
+    try:
+        import sys
+        lines.append(f"python {sys.version.split()[0]} arch={'64' if ctypes.sizeof(ctypes.c_void_p)==8 else '32'}")
+    except Exception:
+        pass
+    return " | ".join(lines)
+
+def _load_libmpv_handle():
+    """Intenta cargar libmpv por varios caminos y verifica mpv_client_api_version."""
     tried = []
-    # 1) find_library
+    # a) python-mpv (pip/apt) como fallback primero — suele tener lógica de carga más probada
+    try:
+        import mpv as py_mpv  # type: ignore
+        # python-mpv expone _libmpv si ya cargó
+        if hasattr(py_mpv, "_libmpv") or hasattr(py_mpv, "libmpv"):
+            log.info("python-mpv package detected, but using ctypes path for wid control")
+    except Exception:
+        pass
+
+    candidates = []
     try:
         lib = ctypes.util.find_library("mpv")
-        tried.append(f"find_library -> {lib}")
         if lib:
-            try:
-                h = ctypes.CDLL(lib, mode=ctypes.RTLD_GLOBAL)
-                log.info(f"libmpv loaded via find_library: {lib}")
-                return h
-            except Exception as e:
-                tried.append(f"{lib}: {e}")
+            candidates.append(lib)
     except Exception as e:
-        tried.append(f"find_library error: {e}")
-    # 2) paths absolutos explícitos (más robusto dentro de AppImage)
-    for path in ["/usr/lib/x86_64-linux-gnu/libmpv.so.2", "/usr/lib/x86_64-linux-gnu/libmpv.so.1", "libmpv.so.2", "libmpv.so.1"]:
-        try:
-            h = ctypes.CDLL(path, mode=ctypes.RTLD_GLOBAL)
-            log.info(f"libmpv loaded via {path}")
-            return h
-        except Exception as e:
-            tried.append(f"{path}: {e}")
-    raise RuntimeError("No se encontró libmpv2. Instala con: sudo apt install libmpv2 mpv\nIntentos: " + " | ".join(tried))
+        tried.append(f"find_library: {e}")
+    candidates += ["/usr/lib/x86_64-linux-gnu/libmpv.so.2", "/usr/lib/x86_64-linux-gnu/libmpv.so.1", "libmpv.so.2", "libmpv.so.1"]
 
-libmpv = _find_libmpv()
+    last_err = None
+    for cand in candidates:
+        for mode in [ctypes.RTLD_GLOBAL, 0]:
+            try:
+                h = ctypes.CDLL(cand, mode=mode)
+                # verificar símbolo crítico y api version
+                h.mpv_client_api_version.restype = ctypes.c_ulong
+                ver = h.mpv_client_api_version()
+                if ver == 0:
+                    tried.append(f"{cand} mode={mode}: api_version 0")
+                    continue
+                # probar mpv_create una vez
+                h.mpv_create.restype = ctypes.c_void_p
+                test = h.mpv_create()
+                if test:
+                    # liberar test handle
+                    try:
+                        h.mpv_terminate_destroy.argtypes = [ctypes.c_void_p]
+                        h.mpv_terminate_destroy(test)
+                    except Exception:
+                        pass
+                    log.info(f"libmpv OK {cand} mode={mode} api=0x{ver:x}")
+                    return h
+                else:
+                    tried.append(f"{cand} mode={mode}: mpv_create NULL ver=0x{ver:x}")
+            except Exception as e:
+                last_err = e
+                tried.append(f"{cand} mode={mode}: {e}")
+    diag = _diag()
+    raise RuntimeError(
+        "No se pudo crear mpv (mpv_create NULL). "
+        "Instala/repara: sudo apt update && sudo apt install --reinstall libmpv2 mpv && sudo ldconfig\n"
+        f"Intentos: {' | '.join(tried)}\nDiagnóstico: {diag}\n"
+        f"Último error: {last_err}"
+    )
+
+libmpv = _load_libmpv_handle()
 
 libmpv.mpv_create.restype = ctypes.c_void_p
 libmpv.mpv_initialize.argtypes = [ctypes.c_void_p]
@@ -61,13 +125,10 @@ try:
     libmpv.mpv_free.argtypes = [ctypes.c_void_p]
 except Exception:
     pass
-
-MPV_FORMAT_NONE = 0
-MPV_FORMAT_STRING = 1
-MPV_FORMAT_OSD_STRING = 2
-MPV_FORMAT_FLAG = 3
-MPV_FORMAT_INT64 = 4
-MPV_FORMAT_DOUBLE = 5
+try:
+    libmpv.mpv_client_api_version.restype = ctypes.c_ulong
+except Exception:
+    pass
 
 class MpvEvent(ctypes.Structure):
     _fields_ = [("event_id", ctypes.c_int), ("error", ctypes.c_int), ("reply_userdata", ctypes.c_ulonglong), ("data", ctypes.c_void_p)]
@@ -84,14 +145,11 @@ def _err_str(code):
 
 class MPV:
     def __init__(self, wid=None, options=None):
-        try:
-            self.handle = libmpv.mpv_create()
-        except Exception as e:
-            raise RuntimeError(f"mpv_create excepción: {e}. Verifica libmpv2 instalado (sudo apt install libmpv2)") from e
+        # wid=0 es inválido — no setear
+        self.handle = libmpv.mpv_create()
         if not self.handle:
-            raise RuntimeError("mpv_create devolvió NULL (sin memoria o libmpv dañada). Reinstala: sudo apt install --reinstall libmpv2 mpv")
-        # wid como INT64 antes de initialize (evita string-embed fallos)
-        if wid is not None:
+            raise RuntimeError(f"mpv_create devolvió NULL. {_diag()}")
+        if wid is not None and int(wid) != 0:
             v = ctypes.c_int64(int(wid))
             rc = libmpv.mpv_set_option(self.handle, b"wid", MPV_FORMAT_INT64, ctypes.byref(v))
             if rc < 0:
