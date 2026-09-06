@@ -1,3 +1,9 @@
+dankoiptv (1.1b-20260906-1448) unstable; urgency=medium
+
+  * Fix locale LC_NUMERIC=C + AppImage versionado.
+
+ -- Danko Petro <danko@local>  Sat, 06 Sep 2026 14:48:00 +0000
+
 dankoiptv (1.0.0-1) unstable; urgency=medium
 
   * Initial release for Linux Mint 22.3+.
