@@ -1,3 +1,9 @@
+dankoiptv (1.1c-20260906-1450) unstable; urgency=medium
+
+  * Fix locale en AppRun + main antes de importar mpv.
+
+ -- Danko Petro <danko@local>  Sat, 06 Sep 2026 14:50:00 +0000
+
 dankoiptv (1.1b-20260906-1448) unstable; urgency=medium
 
   * Fix locale LC_NUMERIC=C + AppImage versionado.
