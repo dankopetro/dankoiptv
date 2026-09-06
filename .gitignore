@@ -1,2 +1,14 @@
 test_index.html
 index_backup.html
+.pybuild/
+build/
+squashfs-root/
+dankoiptv.egg-info/
+appimagetool-x86_64.AppImage
+*.AppImage
+*.deb
+*.buildinfo
+*.changes
+__pycache__/
+*.pyc
+.DS_Store
