@@ -3,6 +3,12 @@ index_backup.html
 .pybuild/
 build/
 squashfs-root/
+debian/dankoiptv/
+debian/files
+debian/*.log
+debian/*.substvars
+debian/.debhelper/
+debian/debhelper-build-stamp
 dankoiptv.egg-info/
 appimagetool-x86_64.AppImage
 *.AppImage

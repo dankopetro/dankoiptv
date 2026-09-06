@@ -1,9 +1,0 @@
-[Desktop Entry]
-Name=Dankoiptv
-Comment=Advanced IPTV Player for Linux Mint
-Exec=dankoiptv
-Icon=multimedia-player
-Terminal=false
-Type=Application
-Categories=AudioVideo;Player;TV;
-StartupNotify=true
