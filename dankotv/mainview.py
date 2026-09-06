@@ -70,7 +70,9 @@ class MainWindow(QMainWindow):
 
     # --- UI construida desde layout.py ---
     def _build_ui(self):
+        self._video_max = False
         mb = QMenuBar(self)
+        self.menubar = mb
         self.setMenuBar(mb)
         for menu_name, items in L.MENUS.items():
             m = mb.addMenu(menu_name)
@@ -90,6 +92,7 @@ class MainWindow(QMainWindow):
         main.addWidget(splitter)
 
         side = QWidget()
+        self.sidebar = side
         sl = QVBoxLayout(side)
         self.search = QLineEdit()
         self.search.setPlaceholderText("🔎 Buscar canal...")
@@ -114,7 +117,9 @@ class MainWindow(QMainWindow):
         self.now_label.setObjectName("muted")
         rl.addWidget(self.now_label)
 
-        bar = QHBoxLayout()
+        self.toolbar = QWidget()
+        bar = QHBoxLayout(self.toolbar)
+        bar.setContentsMargins(0, 0, 0, 0)
         for it in L.TOOLBAR:
             b = QPushButton(it["label"])
             b.setToolTip(it.get("tip", ""))
@@ -130,7 +135,7 @@ class MainWindow(QMainWindow):
         self.vol.valueChanged.connect(self._on_volume)
         bar.addWidget(QLabel("🔊"))
         bar.addWidget(self.vol)
-        rl.addLayout(bar)
+        rl.addWidget(self.toolbar)
         splitter.addWidget(right)
         splitter.setSizes([360, 920])
 
@@ -186,10 +191,16 @@ class MainWindow(QMainWindow):
                 pass
 
     def toggle_fullscreen(self):
-        if self.isFullScreen():
-            self.showNormal()
-        else:
-            self.showFullScreen()
+        """MAXIMIZA EL VIDEO: oculta sidebar/menús y el video llena la ventana.
+        ⛶, doble clic, F11 o Esc alternan."""
+        self._video_max = not self._video_max
+        self.sidebar.setVisible(not self._video_max)
+        self.menubar.setVisible(not self._video_max)
+        self.statusBar().setVisible(not self._video_max)
+        self.now_label.setVisible(not self._video_max)
+        if self._video_max:
+            self.statusBar().showMessage("Video maximizado — doble clic o Esc para salir", 3000)
+            self.statusBar().setVisible(True)
 
     def go_home(self):
         self.back_home.emit()
@@ -321,6 +332,7 @@ class MainWindow(QMainWindow):
             try:
                 wid = int(self.video_frame.winId())
                 self.player = SeamlessPlayer(wid=wid if wid else None, cache_secs=int(self._cfg.get("cache_secs", 45)))
+                self.player.on_double_click = self.toggle_fullscreen
             except Exception as e:
                 QMessageBox.warning(self, "Video", f"No se pudo iniciar mpv:\n{e}\nsudo apt install libmpv2 mpv")
                 return
@@ -338,8 +350,8 @@ class MainWindow(QMainWindow):
                 pass
 
     def keyPressEvent(self, ev):
-        if ev.key() == Qt.Key.Key_Escape and self.isFullScreen():
-            self.showNormal()
+        if ev.key() == Qt.Key.Key_Escape and self._video_max:
+            self.toggle_fullscreen()
             return
         if ev.key() == Qt.Key.Key_F11:
             self.toggle_fullscreen()

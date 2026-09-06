@@ -24,6 +24,7 @@ class SeamlessPlayer:
         self._reloading = False
         self._armed = True
         self._err_retries = 0
+        self.on_double_click = None  # MainWindow lo setea: maximizar video
         self._build_player()
 
     def _base_options(self):
@@ -67,6 +68,22 @@ class SeamlessPlayer:
         def _loaded(_event):
             self._err_retries = 0
             self._cascade = 0
+
+        # mpv captura el mouse del video embebido: el doble clic llega
+        # aquí, no al QWidget. Se reenvía al hilo Qt vía singleShot.
+        try:
+            @self.mpv.on_key_press("MBTN_LEFT_DBL")
+            def _dbl(*_a):
+                cb = self.on_double_click
+                if cb:
+                    try:
+                        from PyQt6.QtCore import QTimer
+
+                        QTimer.singleShot(0, cb)
+                    except Exception:
+                        pass
+        except Exception as e:
+            log.warning("dblclick binding failed: %s", e)
 
         @self.mpv.event_callback("end_file")
         def _end(_event):
