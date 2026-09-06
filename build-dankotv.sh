@@ -17,6 +17,7 @@ cp -r dankotv "$PKGDIR/usr/lib/dankotv/"
 inject "$PKGDIR/usr/lib/dankotv"
 cat > "$PKGDIR/usr/bin/dankotv" << 'EOF'
 #!/bin/bash
+export PYTHONPATH="/usr/lib/dankoiptv:${PYTHONPATH}"
 exec python3 /usr/lib/dankotv/dankotv/app.py "$@"
 EOF
 chmod +x "$PKGDIR/usr/bin/dankotv"
@@ -73,7 +74,7 @@ cat << 'EOF' > "$APPDIR/AppRun"
 #!/bin/bash
 HERE="$(dirname "$(readlink -f "${0}")")"
 export LC_NUMERIC=C
-export PYTHONPATH="${HERE}/usr/lib:${PYTHONPATH}"
+export PYTHONPATH="${HERE}/usr/lib:${HERE}/usr/lib/dankoiptv:${PYTHONPATH}"
 export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}:/usr/lib/x86_64-linux-gnu:/usr/lib"
 if ! ldconfig -p 2>/dev/null | grep -q libmpv; then
   echo "ADVERTENCIA: libmpv no encontrada. Instala: sudo apt install libmpv2 mpv" >&2

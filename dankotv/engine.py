@@ -25,6 +25,14 @@ def ensure_engine_path():
     repo = _repo_engine()
     if repo and repo not in sys.path:
         sys.path.insert(0, repo)
+    # AppDir/AppImage/.deb: el motor puede ir junto al shell en sys.path
+    for p in list(sys.path):
+        if not p or not os.path.isdir(p):
+            continue
+        cand = os.path.join(p, "dankoiptv", "dankoiptv.py")
+        engine_dir = os.path.join(p, "dankoiptv")
+        if os.path.exists(cand) and engine_dir not in sys.path:
+            sys.path.insert(0, engine_dir)
 
 
 ensure_engine_path()

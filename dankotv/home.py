@@ -16,6 +16,28 @@ class _Bridge(QObject):
     done = pyqtSignal(object)
 
 
+def load_spec(spec, parent, on_done):
+    """Carga canales de un spec {type m3u|xtream,...} en hilo.
+    on_done(ok, channels, groups, err) corre en hilo Qt."""
+    bridge = _Bridge(parent)
+
+    def work():
+        try:
+            if spec["type"] == "m3u":
+                ch, gr = engine.load_m3u(spec["url"])
+            else:
+                ch, gr = engine.load_xtream(spec["host"], spec["user"], spec["pass"])
+            bridge.done.emit((True, ch, gr, ""))
+        except Exception as e:
+            bridge.done.emit((False, [], [], str(e)))
+
+    def done(res):
+        on_done(*res)
+
+    bridge.done.connect(done)
+    threading.Thread(target=work, daemon=True).start()
+
+
 class NewListDialog(QDialog):
     """Nueva lista: nombre + URL M3U o credenciales Xtream + probar."""
 
@@ -126,6 +148,7 @@ class NewListDialog(QDialog):
 
 class HomeWindow(QMainWindow):
     open_list = pyqtSignal(dict)
+    back_main = pyqtSignal()
 
     def __init__(self, version=""):
         super().__init__()
@@ -161,6 +184,9 @@ class HomeWindow(QMainWindow):
         lay.addWidget(self.list_widget, stretch=1)
 
         row = QHBoxLayout()
+        self.back_btn = QPushButton("← Volver")
+        self.back_btn.clicked.connect(self.back_main.emit)
+        row.addWidget(self.back_btn)
         self.add_btn = QPushButton("＋ Nueva lista")
         self.add_btn.clicked.connect(self.add_list)
         row.addWidget(self.add_btn)
@@ -193,21 +219,9 @@ class HomeWindow(QMainWindow):
         box.setText(f"Descargando '{spec['name']}'... (puede tardar unos segundos)")
         box.setStandardButtons(QMessageBox.StandardButton.NoButton)
         box.show()
-        bridge = _Bridge(self)
 
-        def work():
-            try:
-                if spec["type"] == "m3u":
-                    ch, gr = engine.load_m3u(spec["url"])
-                else:
-                    ch, gr = engine.load_xtream(spec["host"], spec["user"], spec["pass"])
-                bridge.done.emit((True, ch, gr, ""))
-            except Exception as e:
-                bridge.done.emit((False, [], [], str(e)))
-
-        def done(res):
+        def done(ok, ch, gr, err):
             box.close()
-            ok, ch, gr, err = res
             if not ok or not ch:
                 QMessageBox.warning(self, "Error", f"No se pudo cargar la lista.\n{err}")
                 return
@@ -221,8 +235,7 @@ class HomeWindow(QMainWindow):
             self.refresh()
             self.open_list.emit(entry)
 
-        bridge.done.connect(done)
-        threading.Thread(target=work, daemon=True).start()
+        load_spec(spec, self, done)
 
     def _open_selected(self, *_):
         item = self.list_widget.currentItem()
