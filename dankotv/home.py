@@ -15,11 +15,24 @@ from . import engine
 class _Bridge(QObject):
     done = pyqtSignal(object)
 
+    def __init__(self, callback=None, parent=None):
+        super().__init__(parent)
+        self.callback = callback
+        if callback:
+            self.done.connect(self._handle)
+
+    def _handle(self, res):
+        if self.callback:
+            if isinstance(res, tuple):
+                self.callback(*res)
+            else:
+                self.callback(res)
+
 
 def load_spec(spec, parent, on_done):
     """Carga canales de un spec {type m3u|xtream,...} en hilo.
     on_done(ok, channels, groups, err) corre en hilo Qt."""
-    bridge = _Bridge(parent)
+    bridge = _Bridge(on_done, parent)
 
     def work():
         try:
@@ -31,10 +44,6 @@ def load_spec(spec, parent, on_done):
         except Exception as e:
             bridge.done.emit((False, [], [], str(e)))
 
-    def done(res):
-        on_done(*res)
-
-    bridge.done.connect(done)
     threading.Thread(target=work, daemon=True).start()
 
 
@@ -116,7 +125,13 @@ class NewListDialog(QDialog):
             return
         self.test_btn.setEnabled(False)
         self.status.setText("Probando...")
-        bridge = _Bridge(self)
+
+        def on_done(ok, msg):
+            self.test_btn.setEnabled(True)
+            self._tested = ok
+            self.status.setText(msg)
+
+        bridge = _Bridge(on_done, self)
 
         def work():
             try:
@@ -128,13 +143,6 @@ class NewListDialog(QDialog):
             except Exception as e:
                 bridge.done.emit((False, f"Fallo: {e}"))
 
-        def done(res):
-            self.test_btn.setEnabled(True)
-            ok, msg = res
-            self._tested = ok
-            self.status.setText(msg)
-
-        bridge.done.connect(done)
         threading.Thread(target=work, daemon=True).start()
 
     def accept(self):
@@ -222,8 +230,15 @@ class HomeWindow(QMainWindow):
 
         def done(ok, ch, gr, err):
             box.close()
+            box.deleteLater()
             if not ok or not ch:
-                QMessageBox.warning(self, "Error", f"No se pudo cargar la lista.\n{err}")
+                msg = QMessageBox(self)
+                msg.setWindowTitle("Error")
+                msg.setText(f"No se pudo cargar la lista.\n{err}")
+                msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+                msg.show()
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(5000, msg.close)
                 return
             entry = dict(spec)
             entry["channels"] = len(ch)
