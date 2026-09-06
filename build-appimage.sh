@@ -40,6 +40,12 @@ cat << 'EOF' > "$BUILD_DIR/AppRun"
 #!/bin/bash
 HERE="$(dirname "$(readlink -f "${0}")")"
 export PYTHONPATH="${HERE}/usr/bin:${PYTHONPATH}"
+# Asegurar que el sistema encuentre libmpv aunque AppImage aisle LD_LIBRARY_PATH
+export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}:/usr/lib/x86_64-linux-gnu:/usr/lib"
+# Diagnóstico opcional si libmpv falta
+if ! ldconfig -p 2>/dev/null | grep -q libmpv; then
+  echo "ADVERTENCIA: libmpv no encontrada. Instala: sudo apt install libmpv2 mpv" >&2
+fi
 exec python3 -m dankoiptv.main "$@"
 EOF
 chmod +x "$BUILD_DIR/AppRun"

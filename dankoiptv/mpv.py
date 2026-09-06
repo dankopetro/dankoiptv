@@ -8,18 +8,29 @@ import threading
 log = logging.getLogger("dankoiptv.mpv")
 
 def _find_libmpv():
-    lib = ctypes.util.find_library("mpv")
-    if lib:
+    tried = []
+    # 1) find_library
+    try:
+        lib = ctypes.util.find_library("mpv")
+        tried.append(f"find_library -> {lib}")
+        if lib:
+            try:
+                h = ctypes.CDLL(lib, mode=ctypes.RTLD_GLOBAL)
+                log.info(f"libmpv loaded via find_library: {lib}")
+                return h
+            except Exception as e:
+                tried.append(f"{lib}: {e}")
+    except Exception as e:
+        tried.append(f"find_library error: {e}")
+    # 2) paths absolutos explícitos (más robusto dentro de AppImage)
+    for path in ["/usr/lib/x86_64-linux-gnu/libmpv.so.2", "/usr/lib/x86_64-linux-gnu/libmpv.so.1", "libmpv.so.2", "libmpv.so.1"]:
         try:
-            return ctypes.CDLL(lib)
-        except Exception:
-            pass
-    for path in ["libmpv.so.2", "libmpv.so.1", "/usr/lib/x86_64-linux-gnu/libmpv.so.2"]:
-        try:
-            return ctypes.CDLL(path)
-        except Exception:
-            continue
-    raise RuntimeError("Could not find libmpv2. Install libmpv2.")
+            h = ctypes.CDLL(path, mode=ctypes.RTLD_GLOBAL)
+            log.info(f"libmpv loaded via {path}")
+            return h
+        except Exception as e:
+            tried.append(f"{path}: {e}")
+    raise RuntimeError("No se encontró libmpv2. Instala con: sudo apt install libmpv2 mpv\nIntentos: " + " | ".join(tried))
 
 libmpv = _find_libmpv()
 
@@ -73,9 +84,12 @@ def _err_str(code):
 
 class MPV:
     def __init__(self, wid=None, options=None):
-        self.handle = libmpv.mpv_create()
+        try:
+            self.handle = libmpv.mpv_create()
+        except Exception as e:
+            raise RuntimeError(f"mpv_create excepción: {e}. Verifica libmpv2 instalado (sudo apt install libmpv2)") from e
         if not self.handle:
-            raise RuntimeError("mpv_create failed")
+            raise RuntimeError("mpv_create devolvió NULL (sin memoria o libmpv dañada). Reinstala: sudo apt install --reinstall libmpv2 mpv")
         # wid como INT64 antes de initialize (evita string-embed fallos)
         if wid is not None:
             v = ctypes.c_int64(int(wid))
