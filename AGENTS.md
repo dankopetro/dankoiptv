@@ -1,228 +1,265 @@
-# Dankoiptv - Project Context
+# Dankoiptv / Danko TV — Contexto del Proyecto (para cualquier IA)
 
-## Qué es esto
-Reproductor IPTV propio (nombre de trabajo: **Dankoiptv**) construido con "lo mejor de ambos mundos":
-**yuki-iptv** (Python/PyQt6 + libmpv embebido) y **open-tv / "FredTV"** (Fredolx, Rust/Tauri + mpv
-proceso externo). Esta sesión (23/08/2026, desde ~11:53) investigó a fondo ambos proyectos, parchó
-yuki-iptv en producción hasta lograr reconexión seamless, y verificó empíricamente qué enfoques
-funcionan y cuáles NO. Todo ese conocimiento se volca acá para no perderlo.
+**Regla de oro:** leer este archivo COMPLETO antes de tocar nada. Todo lo documentado acá
+fue verificado empíricamente (probado en vivo contra IPTV real) o aprendido por errores
+propios durante el desarrollo. NO repetir errores ya probados.
 
-**Estado al cerrar esta sesión:** el parche de reconexión seamless está funcionando en producción
-en la laptop danko (conectada al TV). El proyecto Dankoiptv aún no tiene código — arranca en una
-nueva sesión.
+Última actualización: 06/09/2026 (post-fix hilo Qt, build 0.1-20260906-1914)
 
 ---
 
-## 1. Investigación: cómo funciona cada proyecto
+## 0. Estado ACTUAL del proyecto
 
-### yuki-iptv (https://github.com/itachi-re/yuki-iptv) — GPL-3.0
-Lenguaje: Python. Rama main. Fork comunitario mantenido por itachi-re.
+- **Danko TV 0.1** (`0.1-20260906-1914`): shell nuevo PyQt6 funcional, en pruebas del usuario.
+- **Todo local**: git repo en `~/Projects/Dankoiptv`, builds `.deb` + `.AppImage` locales,
+  NADA subido a GitHub aún (decisión del usuario: probar antes de publicar).
+- **Últimos builds válidos** (en la raíz del repo, generados por `./build-dankotv.sh`):
+  - `dankotv-0.1-20260906-1914-x86_64.AppImage` (864K) ← **el bueno para probar**
+  - `../dankotv_0.1-20260906-1914_all.deb` (52K)
+  - Symlink estable: `./dankotv-x86_64.AppImage` → siempre apunta al último build
+- **Pendiente de prueba por el usuario** (build 1914): que el cartel "Cargando lista..."
+  se cierre solo al terminar la descarga (ver §6.2 para el detalle del bug corregido).
 
-**Arquitectura de reproducción:**
-- **libmpv embebido vía ctypes** — fork del binding python-mpv en `usr/lib/yuki-iptv/thirdparty/mpv.py`
-- Video embebido en la ventana Qt con la opción `wid` (winId del contenedor)
-- Eventos de libmpv procesados en hilo daemon interno (`MPVEventHandlerThread`) y reenviados al
-  hilo Qt vía `execute_in_main_thread()` (señal pyqtSignal que transporta un `functools.partial`)
-  — ver `yuki_iptv/threads.py`
-- La instancia mpv se crea UNA sola vez (`init_mpv_player()`) y se reutiliza para todo (TV, VOD,
-  logo en pausa). La reconexión NUNCA recrea la instancia: es `loadfile(url, 'replace')`
-- Código principal monolítico: `usr/lib/yuki-iptv/yuki-iptv.py` (~266KB, 6187 líneas)
-- Opciones base en el dict `options` (~línea 4212): `osc=True, hwdec="no", ytdl=False,
-  force-window=True, force-seekable=True, wid=..., loglevel=info, script-opts=osc-layout=slimbox...`
-- Settings en JSON: `~/.config/yuki-iptv/settings.json` (clave `cache_secs` 0-120, default 0;
-  `autoreconnection` default False; `mpv_options` string libre de overrides)
+### Qué es cada cosa (dos apps en el mismo repo)
+1. **Dankoiptv** (`usr/lib/dankoiptv/`, builds `1.1g-*`): el MOTOR base — fork directo de
+   yuki-iptv renombrado. Monolito completo con EPG, grabación, catchup, editor de listas,
+   multi-EPG, MPRIS, i18n. Es una app completa por sí misma y TAMBIÉN es la librería que
+   usa Danko TV (M3UParser, XTream, binding mpv).
+2. **Danko TV** (`dankotv/`, builds `0.1-*`): el SHELL nuevo, modular, la app del futuro.
+   Ventana integrada con libmpv, sin ventanas separadas. Reutiliza el motor base.
 
-**Mecanismo de reconexión ORIGINAL (el malo):**
-- Detectores: evento `end_file` con reason `error` + poller QTimer de 100ms que chequea
-  `cache_buffering_state == 0` (buffer agotado al 100%)
-- Acción: overlay "Playing error" + delay FIJO (1s o 5s) + `doPlay()` = `loadfile(replace)`
-  → teardown completo de demuxer + reconexión TCP + re-apertura = **freeze/negro visible garantizado**
-- Sin límite de reintentos ni backoff; default apagado; solo modo TV (`playing_group == 0`)
-- NO configura ninguna opción de reconexión de red en playback (su grabador ffmpeg sí usa
-  `-reconnect*`, pero el player no)
+---
 
-### open-tv / FredTV (https://github.com/Fredolx/open-tv) — GPL-2.0
-Lenguaje: **Rust** (reescrito desde Python/Electron; antes era Electron). 3990 estrellas.
+## 1. Historia y decisiones (por qué es así)
 
-**Arquitectura de reproducción:**
-- **mpv como proceso EXTERNO** (`tokio::process::Command` en `src-tauri/src/mpv.rs`), SIN IPC:
-  no observa propiedades, no lee eventos. Solo captura stdout por si mpv muere con error
-- UI: Tauri 2 + Angular; la ventana de video es la ventana nativa de mpv, separada de la app
-- **CERO lógica de reconexión en la app.** No hay watchdog, polling, ni handlers de eventos
+### Origen (sesión 23/08/2026)
+- Se investigaron a fondo **yuki-iptv** (Python/PyQt6 + libmpv embebido) y **open-tv** (Fredolx,
+  Rust/Tauri + mpv externo). Se parchó yuki en producción (laptop danko, TV) hasta lograr
+  reconexión seamless real. Todas las lecciones empíricas en §4 y §5.
+- Decisión de stack: **Python 3.12 + PyQt6 + libmpv embebido** (estilo Yuki, ventana
+  integrada, control total de eventos) — NO mpv externo como Fred (ventana separada, sin control).
 
-**EL TRUCO (toda la magia son 2 flags de CLI):**
+### Renombres y versiones
+- Fork de yuki-iptv renombrado 100% a "Dankoiptv" (commit `066e7d3`): `grep -ri yuki` en
+  código/UI = 0 resultados. Licencia GPL-3.0 (heredada de yuki, permite fork).
+- Esquema de versiones (`./version.sh`): `0.<minor>-AAAAMMDD-HHMM`.
+  - minor = meses desde sep-2026 + 1 (sep-2026 → 0.1, oct-2026 → 0.2, ...)
+  - major = años desde 2026 (2027 → 1.0)
+  - Modo legacy: `./version.sh dankoiptv` → `1.1g-fecha` (línea 1.x del motor)
+- Inyección de versión: placeholder `__DANKOTV_VERSION__` en `dankotv/__init__.py`; el build
+  lo reemplaza por sed SOLO en la copia empaquetada (`build-dankotv.sh`, función `inject`).
+
+### Llaves del shell Danko TV (sesión 06/09/2026)
+- Shell nuevo creado en `dankotv/` (commit `2c2267b`): pantalla Mis listas, layout declarativo,
+  12 skins naranjas/dark, logo propio (TV+carita+antenas, `dankotv/assets/`).
+- Flujo decidido por el usuario: la app abre DIRECTO en la ventana principal (sin Home
+  intermedio); si no hay listas guardadas, lanza mini menú "Nueva lista" automático
+  (`QTimer.singleShot(400, main.add_list)` en `app.py:74`).
+- Modo **video maximizado** (commit `6580fc7`): doble clic sobre el video, botón ⛶, F11 o Esc
+  alternan; oculta sidebar/menubar/statusbar/now_label, el video llena la ventana.
+
+---
+
+## 2. Estructura del repo
+
 ```
-mpv <url> --prefetch-playlist=yes --loop-playlist=inf     [solo para livestreams]
+Dankoiptv/
+├── AGENTS.md              ← este archivo
+├── README.md, ROADMAP.md, COPYING (GPL-3.0)
+├── version.sh             ← generador de versión (ver §1)
+├── build-dankotv.sh       ← builder .deb + AppImage de Danko TV (ver §3)
+├── build-appimage.sh      ← builder legacy del motor 1.x
+├── appimagetool-x86_64.AppImage  ← empaquetador (NO extraer a la raíz: ver §6.3)
+├── dankotv/               ← SHELL Danko TV 0.1 (la app nueva, ~1200 líneas)
+│   ├── app.py             ← entry point: QApplication, wiring home↔main, flujo inicial
+│   ├── home.py            ← HomeWindow (Mis listas) + NewListDialog + load_spec() + _Bridge
+│   ├── mainview.py        ← MainWindow: video embebido + lista canales + menús + toolbar
+│   ├── player.py          ← SeamlessPlayer: libmpv embebido + motor seamless (§5)
+│   ├── engine.py          ← load_m3u()/load_xtream() sobre el motor base; ensure_engine_path()
+│   ├── config.py          ← ~/.config/dankotv/ (lists.json + settings.json)
+│   ├── layout.py          ← MENUS/TOOLBAR declarativos (labels + slots por nombre)
+│   ├── skins.py           ← 12 skins + fuentes (apply_look)
+│   └── assets/            ← logo-256.png, logo-512.png, dankotv.svg, main.png
+├── usr/lib/dankoiptv/     ← MOTOR base (fork yuki renombrado, app 1.x Y librería)
+│   ├── dankoiptv.py       ← entry del motor (~6300 líneas, monolito)
+│   ├── dankoiptv_lib/     ← 33 módulos: playlist, EPG, gui, record, xtream, mpris...
+│   └── thirdparty/        ← mpv.py (binding libmpv ctypes) + xtream.py
+├── usr/share/dankoiptv/   ← iconos del motor (icons/ + icons_dark/)
+├── po/                    ← fuentes de traducción (dankoiptv-*.po)
+└── debian/                ← empaquetado legacy del motor
 ```
-- La playlist de mpv tiene UNA entrada (la URL). Al EOF, el motor de playlist de mpv avanza a la
-  siguiente entrada (= misma URL) **dentro del mismo proceso y la misma ventana**: no destruye
-  nada, mantiene el último frame en pantalla → transición sin negro
-- Historial git relevante (verificado en el repo): el autor PROBÓ PRIMERO
-  `--keep-open=yes --keep-open-pause=no --stream-lavf-o=reconnect_streamed=1,reconnect_at_eof=1...`
-  (commit `dfc0dfb` "stream-keep-open") y LO ABANDONÓ al día siguiente por
-  `prefetch-playlist + loop-playlist` (commit `b71330f`), porque el reconnect de ffmpeg/lavf no
-  cubre todos los tipos de corte (playlist HLS 404, errores de demuxer)
+
+### Config del usuario
+- Shell Danko TV: `~/.config/dankotv/` (lists.json, settings.json)
+  - settings: `skin`, `font_family`, `last_list`, `last_group`, `cache_secs` (default 45)
+- Motor 1.x: `~/.config/dankoiptv/`
 
 ---
 
-## 2. Lecciones EMPÍRICAS (verificadas en pruebas reales con IPTV en producción)
+## 3. Build (cómo se construye)
 
-Estas son las joyas de la sesión — cada una fue probada en vivo sobre canales reales del proveedor:
+```bash
+./build-dankotv.sh          # construye TODO: .deb + AppImage, versión auto por fecha
+./version.sh                # versión actual del shell (0.x) — ./version.sh dankoiptv = 1.1g
+python3 -m py_compile dankotv/*.py   # validar sintaxis antes de build (HACERLO SIEMPRE)
+```
+- Salidas: `../dankotv_<ver>_all.deb` (52K, depende del paquete `dankoiptv` + python3-pyqt6 +
+  libmpv2 + mpv) y `dankotv-<ver>-x86_64.AppImage` (864K, autocontenido: motor + shell +
+  traducciones + iconos). Symlink `dankotv-x86_64.AppImage` → último build.
+- `dankotv/VERSION.txt` se actualiza en cada build (es un artefacto, no editar a mano).
+- Probar desde fuente sin build: `python3 dankotv/app.py` (necesita deps PyQt6/requests/
+  libmpv2 instaladas y resuelve el motor desde `usr/lib/dankoiptv/` del repo).
+- AppImage en esta máquina: FUSE a veces falla ("mount failed: Operation not permitted") →
+  extraer con `--appimage-extract` y correr `squashfs-root/AppRun` (PERO ver §6.3 si el
+  squashfs-root extraído era el appimagetool).
 
-| # | Experimento | Resultado | Conclusión |
-|---|---|---|---|
-| 1 | `stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=5` | ❌ **Rebobinados de 10-15s**: en streams lineales (TS/HTTP), al cortarse la conexión ffmpeg reconecta y el servidor RETOMA desde un punto anterior de su buffer → el contenido rebobina → PTS de audio saltan atrás → "Reset playback" | NO usar lavf-reconnect en playback IPTV. Coincide con que el autor de open-tv lo abandonara |
-| 2 | `prefetch-playlist=yes` con playlist de 1 entrada en loop | ❌ **Rebobinados de ~10s**: mpv pre-abre una 2ª conexión ANTES del corte; al avanzar salta a esa conexión vieja cuyo contenido empezó minutos atrás | Prefetch en playlist de entrada única = máquina de rebobinar. Además duplica conexiones (riesgo con paneles que limitan conexiones simultáneas) |
-| 3 | `loop-playlist=inf` SOLO (sin prefetch, sin lavf) | ✅ **El punto dulce**: corte → congelamiento de ~2s en el último frame → recupera saltando ~5s hacia ADELANTE (lo que duró el congelamiento, no pierde contenido previo) | Mecanismo base recomendado |
-| 4 | `force-seekable=True` (default de Yuki) en live | ❌ Con proveedores que mandan PTS de audio rotos, mpv hace seeks hacia atrás visibles | Para live: `force_seekable=False`. Para VOD/catchup: True (necesita seek) |
-| 5 | Cache grande (`cache_secs=45`) | ⚠️ Matiz: absorbe cortes de RED (datos dejan de llegar pero conexión vive), pero NO absorbe `end-file (reason: eof)` cuando la FUENTE termina el stream | Cache sí, pero no resuelve cortes de origen |
-| 6 | keep-open + eof-reached + backoff en cascada | ✅ Implementado al final (última iteración) — congela en el último frame y dosifica recargas cuando el codificador del proveedor está en cascada | En prueba al cierre de la sesión |
-
-**Características del proveedor IPTV del usuario (Xtream API, catchup 7 días):**
-- Playlist M3U de **88 MB, 347.171 canales, 310 grupos** (tarda ~26s en descargar → el timeout
-  default de 20s de yuki-iptv era insuficiente, se parchó a 120s en `requests_timeout.py`)
-- Algunos canales (sobre todo deportes en vivo 720p59.94) tienen **encoders rotos**:
-  - PTS de audio saltan atrás 10-15s cada ~20s → mpv: "Invalid audio PTS" +
-    "Reset playback due to audio timestamp reset" (con force-seekable esto rebobina contenido)
-  - El stream TERMINA cada ~18-30s (`end-file reason: eof`) → ciclo infinito de cortes
-  - Tras un reinicio del encoder, las reconexiones inmediatas pueden cortar en cascada 2-3 veces
-    hasta que una conexión se sostiene (~15-20s de buffer)
-- Canales con feed sano: cortes esporádicos, el mecanismo seamless los resuelve en 2-3s
+### Dependencias runtime
+`python3-pyqt6 python3-requests libmpv2 mpv` (el motor 1.x además: python3-gi, python3-chardet,
+ffmpeg). En la laptop danko todo está ya instalado.
 
 ---
 
-## 3. El parche final que FUNCIONA en yuki-iptv (referencia para Dankoiptv)
+## 4. Lecciones EMPÍRICAS del motor de reproducción (¡NO ignorar!)
 
-Aplicado en `danko@192.168.0.200:~/yuki-iptv/usr/lib/yuki-iptv/yuki-iptv.py`
-(backup del original: `yuki-iptv.py.bak-20260823` junto al archivo).
+Probadas en vivo contra el proveedor IPTV real del usuario (Xtream, playlist M3U de 88 MB,
+347.171 canales, 310 grupos; descarga ~26s; algunos canales con encoders rotos que cortan
+cada 18-30s y mandan PTS de audio hacia atrás).
 
-### Opciones mpv para TV en vivo (la receta final):
+### Opciones mpv — PROHIBIDAS vs OBLIGATORIAS en live
+| Opción | Veredicto | Motivo |
+|---|---|---|
+| `stream-lavf-o=reconnect*` | ❌ PROHIBIDA | ffmpeg reconecta y el servidor retoma desde un punto anterior → **rebobina 10-15s** |
+| `prefetch-playlist=yes` | ❌ PROHIBIDA | pre-abre 2ª conexión vieja → **rebobina ~10s**; duplica conexiones |
+| `force_seekable=True` en live | ❌ PROHIBIDA | con PTS rotos, mpv hace seeks hacia atrás visibles |
+| `keep_open=yes` + `keep_open_pause=no` | ✅ | al EOF congela en último frame (cero negro) |
+| `loop_playlist="no"` + manejo propio del EOF | ✅ | loop sin control causaba cascadas |
+| `cache_secs=45` (configurable) | ⚠️ útil | absorbe micro-cortes de red, NO cortes de origen |
+
+### Algoritmo seamless vigente (implementado en `dankotv/player.py`)
+1. Observador de propiedad `eof-reached` (con keep-open, `end-file` ya NO se dispara en EOF)
+2. EOF → si el anterior fue hace <20s: `cascade += 1`, si no `cascade = 0`; delay = `min(cascade*2, 8)`s;
+   recarga con `mpv.play(url)` (loadfile replace, MISMA instancia/ventana) tras el delay
+3. `file-loaded` resetea `_err_retries` y `_cascade`
+4. Errores reales (`end-file` reason `error`): backoff exponencial 2^n cap 30s, máx 10 reintentos
+5. Al parar (`stop()`): restaurar `keep_open=False` (si no, el logo en pausa loopea)
+6. VOD/catchup: `keep_open=False`, `force_seekable=True` (seek normal)
+
+### Flujo de eventos Qt/libmpv (CRÍTICO)
+- Los callbacks de libmpv llegan en el hilo del event handler de mpv (NO el hilo Qt).
+- Cualquier cosa que toque la GUI debe reenviarse al hilo Qt. En el shell: `QTimer.singleShot(0, cb)`.
+- La instancia mpv se crea UNA sola vez y se reutiliza; la reconexión NUNCA recrea la instancia.
+
+---
+
+## 5. Motor base: datos útiles
+
+- `usr/lib/dankoiptv/thirdparty/mpv.py` — binding libmpv via ctypes (fork del python-mpv de
+  yuki): maneja el hilo de eventos, property_observer, event_callback, on_key_press, overlays.
+- `usr/lib/dankoiptv/thirdparty/xtream.py` — cliente Xtream (login player_api.php, catchup).
+- `dankoiptv_lib/playlist_m3u.py` M3UParser, `requests_timeout.py` (timeout TOTAL de descarga
+  vía sys.settrace — el timeout nativo de requests NO cubre tiempo total; para playlists
+  gigantes usar ≥120s), `record.py` (ffmpeg con -reconnect* — en grabación SÍ sirve).
+- Historial del motor 1.x: versiones de prueba `1.1g-*`, muchos fixes de mpv en AppImage
+  (LD_LIBRARY_PATH, rutas absolutas antes que find_library, LC_NUMERIC=C antes de importar
+  mpv para silenciar warnings). Ver `git log --oneline` para detalle.
+
+---
+
+## 6. Errores YA COMETIDOS y lecciones de desarrollo (no repetir)
+
+### 6.1 Bug de hilos Qt — el cartel "Cargando lista" que no se cerraba (06/09/2026)
+**Síntoma:** la lista terminaba de cargar y se veían los canales, pero el QMessageBox
+"Cargando lista" quedaba clavado encima, bloqueando toda la app.
+**Causa raíz:** el callback que hacía `box.close()` corría en el **hilo de descarga**
+(threading.Thread), no en el hilo principal de Qt. Qt ignora silenciosamente las
+operaciones de widgets desde hilos secundarios.
+**Fix (vigente):** clase `_Bridge` en `dankotv/home.py` — el QObject vive en el hilo
+principal, conecta su señal `done` a SU PROPIO slot `_handle`; al emitirse desde el hilo
+worker, Qt usa conexión encolada automáticamente y `_handle` → callback SIEMPRE corre en
+el hilo principal. Patrón a usar para TODO trabajo en background con UI:
 ```python
-player.keep_open = True          # al EOF: congela en el último frame (cero negro)
-player.keep_open_pause = False   # al EOF: stop en vez de pausa
-player.loop_playlist = "no"      # el advance lo manejamos nosotros (loop causaba cascadas sin control)
-player.force_seekable = False    # evita seeks hacia atrás por PTS rotos del proveedor
-# NO usar: prefetch-playlist, stream-lavf-o reconnect* (ver lecciones 1 y 2)
-# cache: settings → cache_secs=45 (absorbe micro-cortes de red)
+bridge = _Bridge(on_done, self)          # on_done corre en hilo Qt principal
+def work(): ... bridge.done.emit((ok, ch, gr, err))   # en threading.Thread
 ```
-Para VOD/catchup/archivo: `keep_open=False, force_seekable=True` (seek normal del archivo).
+Aplicado en: `load_spec()`, `test_connection()`, `load_and_store()` (home.py) y
+`reload_list()` (mainview.py). Verificado con test: callback corre en hilo principal.
+**Nunca conectar señales a closures libres si se emiten desde otro hilo.**
 
-### Algoritmo de reconexión (manejo propio del EOF):
-1. Observador de propiedad **`eof-reached`** (con keep-open ya NO se dispara `end-file` en EOF)
-2. Al detectar EOF con seamless activo y playing_channel:
-   - Si el EOF anterior fue hace <20s → `cascade += 1`; si no → `cascade = 0`
-   - Delay = `min(cascade * 2, 8)` segundos
-   - Recarga con `doPlay()` (= loadfile replace, misma instancia/ventana) tras el delay en un thread
-3. `file_loaded` resetea el contador de reintentos de errores
-4. Errores reales (`end-file` reason `error`): backoff exponencial 2^n cap 30s, máximo 10 reintentos,
-   overlay "Playing error" solo si se rindió
-5. Poller de `cache_buffering_state == 0` como ÚLTIMO recurso: 30s (antes 5s) antes de reload forzado
-6. Al parar reproducción (`mpv_override_stop`): restaurar `keep_open=False` (si no, el logo
-   main.png en pausa loopea)
+### 6.2 Fixes de UI triviales pero importantes
+- QMessageBox de error de carga: usar `setStandardButtons(Ok)` + auto-cierre con
+  `QTimer.singleShot(5000, msg.close)` — nunca `NoButton` solos, ni modales bloqueantes.
+- El timer de 5s de fallback sobre el cartel de carga fue REMOVIDO: habría cortado
+  descargas largas (la playlist del usuario tarda ~26s+).
+- Al editar imports de un archivo PyQt, verificar con `py_compile` Y con un import real:
+  una vez rompí `mainview.py` quitando `pyqtSignal` de más → `NameError` al arrancar la
+  AppImage (build 1910, corregido en 1914).
 
-### Flujo de eventos Qt/libmpv (crítico para no bloquear la GUI):
-- Callbacks de mpv llegan en el hilo del event handler → SIEMPRE reenviar al hilo Qt con
-  `execute_in_main_thread(partial(fn, args))`
-- Los delays se hacen con `threading.Thread(target=..., args=(delay,), daemon=True)` que duerme y
-  luego reinyecta al hilo Qt
+### 6.3 appimagetool y squashfs-root — TRAMPA conocida
+- `build-dankotv.sh` usa `./squashfs-root/AppRun` como appimagetool (extraído una vez de
+  `appimagetool-x86_64.AppImage`, está en .gitignore).
+- **PERO** extraer la AppImage de DANKO TV con `--appimage-extract` en la raíz del repo
+  SOBREESCRIBE ese squashfs-root con la app (AppRun = Danko TV) → el build siguiente
+  LARBZA LA APP en vez de empaquetar ("The X11 connection broke", ventanas que se abren).
+- Síntoma: `./build-dankotv.sh` termina en "The X11 connection broke (error 1)".
+- Solución: `rm -rf squashfs-root && ./appimagetool-x86_64.AppImage --appimage-extract`
+  (restaura el tool). Verificar: `./squashfs-root/AppRun --version` debe decir
+  "appimagetool, continuous build...".
+- Si se quiere extraer una AppImage de la app para debug, hacerlo en /tmp, NUNCA en la raíz.
+
+### 6.4 Cosas verificadas sobre AppImage/deb del shell
+- PYTHONPATH del AppRun: `${HERE}/usr/lib:${HERE}/usr/lib/dankoiptv` — el shell importa el
+  motor desde ahí (`ensure_engine_path()` en engine.py también lo resuelve solo).
+- El .deb del shell DEPENDE del paquete `dankoiptv` (el motor) — instalar ambos para probar deb.
+- AppImage necesita libmpv del sistema (no la bundlea): `sudo apt install libmpv2 mpv`.
 
 ---
 
-## 4. Recomendaciones de diseño para Dankoiptv
+## 7. Entorno (máquinas)
 
-### Stack sugerido (lo mejor de ambos):
-- **Python 3.12 + PyQt6 + libmpv embebido** (como Yuki — ventana integrada, control total de
-  eventos/propiedades) — NO proceso mpv externo como Fred (ventana separada, sin control)
-- Estructura MODULAR (lección del monolito de 266KB de Yuki): separar player, playlist, xtream,
-  epg, gui, reconnect
-- Binding mpv: usar python-mpv actual o copiar el fork de Yuki (`thirdparty/mpv.py`) que ya
-  resuelve ctypes y el hilo de eventos
+- **claudio** (donde se desarrolla): Linux Mint 22.3, i9-11900H, Python 3.12.3. Repositorio
+  en `~/Projects/Dankoiptv`. AppImages de prueba NO se pueden lanzar con GUI desde la
+  terminal de opencode en esta máquina de forma confiable (FUSE/X11); probar desde el
+  gestor de archivos o `./dankotv-x86_64.AppImage` en una terminal del usuario.
+- **danko** (192.168.0.200, user `danko`, SSH con clave BatchMode OK): laptop conectada al
+  TV, donde SE USA el IPTV. Python 3.12.3 sistema, mpv 0.37.0, Qt 6.4.2 (xcb), pipewire.
+  Corre el yuki parcheado en `~/yuki-iptv/` (referencia del motor seamless que FUNCIONA;
+  backup `yuki-iptv.py.bak-20260823`).
 
-### Motor de reproducción live (lo verificado):
-```
-Opciones base live:
-  keep_open=yes, keep_open_pause=no, loop-playlist=no, force-seekable=no
-  cache=auto, demuxer-readahead-secs=<configurable 0-120>, cache-secs=<ídem>
-  user-agent / http-header-fields (referer/origin) configurables por playlist y por canal
-VOD/catchup:
-  keep_open=no, force-seekable=yes, save-position-on-quit (como Fred)
-PROHIBIDOS (verificados empíricamente): prefetch-playlist, stream-lavf-o=reconnect*
-```
-
-### Reconexión:
-- keep-open + observador `eof-reached` + backoff en cascada (algoritmo de la sección 3)
-- Backoff exponencial para errores reales, con límite de reintentos
-- Overlay de UI discreto durante recargas (nunca bloquear, nunca pantalla negra)
-
-### Playlist / Xtream:
-- Descarga con timeout TOTAL generoso (≥120s para playlists enormes) — el timeout de requests
-  nativo solo cubre conexión/lectura entre bytes, NO tiempo total; técnica de Yuki:
-  `sys.settrace` con trace_func que corta a los N segundos (ver `yuki_iptv/requests_timeout.py`)
-- Xtream API: login → player_api.php con username/password; catchup-days; streams live con
-  formato `http://host/usuario/pass/<id>`; EPG xmltv.gz
-- Cachear la playlist parseada; 347k canales exigen modelo de datos eficiente (filtros por grupo,
-  búsqueda incremental)
-
-### Funciones a considerar (de ambos mundos + propias):
-- De Yuki: EPG + catchup + grabación (ffmpeg con -reconnect*, ahí SÍ sirve) + editor de listas +
-  Xtream API + i18n + MPRIS + multi-EPG
-- De Fred: simplicidad y velocidad, gestión de límite de conexiones simultáneas
-  (`handle_max_streams` mata el mpv más viejo vía CancellationToken), stream-record simultáneo
-- Propias: telemetría de salud del stream (observar paused-for-cache/cache-buffering-state solo
-  para métricas/UI, NUNCA para reconectar), perfiles por canal (UA/referer), quizá notificaciones
-
----
-
-## 5. Entorno
-
-### Máquinas
-- **claudio** (esta): Linux Mint 22.3, i9-11900H, Python 3.12.3, donde se desarrolla
-- **danko** (192.168.0.200, user `danko`): laptop conectada al TV — DONDE SE USA el IPTV
-  - SSH con clave desde claudio (BatchMode OK): `ssh danko@192.168.0.200`
-  - Python 3.12.3 sistema (`/usr/bin/python3`), pyenv 3.12.0 instalado pero yuki corre con
-    python del sistema (pyenv local system en ~/yuki-iptv)
-  - mpv 0.37.0, Qt 6.4.2 (xcb), pipewire
-  - Yuki parcheado: `~/yuki-iptv/usr/lib/yuki-iptv/` (carpeta extraída de .deb, NO instalado como
-    paquete). Lanzador: `/usr/bin/python3 ~/yuki-iptv/usr/lib/yuki-iptv/yuki-iptv.py`
-  - Backup original del parche: `yuki-iptv.py.bak-20260823`
-
-### Clones de referencia (en /tmp, pueden no existir — re-clonar si hace falta):
+### Clones de referencia (en /tmp, re-clonar si no existen)
 ```bash
 git clone --depth 1 https://github.com/itachi-re/yuki-iptv.git /tmp/opencode/yuki-iptv
 git clone --depth 1 https://github.com/Fredolx/open-tv.git /tmp/opencode/open-tv
 ```
-Archivos clave estudiados:
-- yuki: `usr/lib/yuki-iptv/yuki-iptv.py` (doPlay ~1346, init_mpv_player ~1573, ready_handler_2
-  ~1709, do_reconnect/end_file_error_callback ~4329-4408, check_connection ~5411),
-  `yuki_iptv/requests_timeout.py`, `yuki_iptv/mpv_options.py`, `thirdparty/mpv.py`
-- open-tv: `src-tauri/src/mpv.rs` (get_play_args 143-206), `src-tauri/src/restream.rs` (flags
-  ffmpeg reconnect 59-83), `src-tauri/src/utils.rs` (handle_max_streams 186-204)
-
-### Licencias
-- yuki-iptv: GPL-3.0 → se puede fork/derivar (Dankoiptv sería GPL-3.0)
-- open-tv: GPL-2.0 → tomar SOLO ideas/algoritmos, no copiar código (incompatible con GPL-3.0 sin
-  cláusula "or later")
+- yuki: `usr/lib/yuki-iptv/yuki-iptv.py` (doPlay ~1346, init_mpv_player ~1573,
+  do_reconnect/end_file_error_callback ~4329-4408, check_connection ~5411)
+- open-tv: `src-tauri/src/mpv.rs` (get_play_args 143-206), `restream.rs`, `utils.rs`
+  (handle_max_streams). Licencia GPL-2.0: SOLO ideas, NO copiar código (incompatible).
 
 ---
 
-## 6. Estado del parche yuki (por si hay que tocarlo de nuevo)
+## 8. Proceso de trabajo acordado con el usuario
 
-Versiones del parche probadas en orden (todas en danko, la final es la vigente):
-1. loop-playlist + prefetch + lavf-reconnect → rebobinados 10s (lavf) — DESCARTADO
-2. loop-playlist + prefetch + no-force-seekable → rebobinados 10s (prefetch) — DESCARTADO
-3. loop-playlist + no-force-seekable → bien (+5s adelante), pero cascadas sin control — OK parcial
-4. **keep-open + eof-reached + cascade backoff + no-force-seekable → VIGENTE**
+1. **El usuario prueba SIEMPRE los builds** (AppImage/deb) en su máquina — no esperar que
+   la IA "abra la app" para validar: la app es GUI y el usuario la valida en su escritorio.
+   Reconstruir .deb + AppImage tras CADA cambio que el usuario deba probar.
+2. Antes de entregar un build: `python3 -m py_compile dankotv/*.py` + import real de los
+   módulos (una vez un build llegó roto por un import — §6.2).
+3. El usuario prefiere respuestas en **español**, directas y cortas.
+4. Sin push a GitHub hasta que el usuario lo pida (todo es commit local hasta ahora).
+5. Tras cada fix funcional verificado, commit con mensaje estilo git log existente.
+6. Ante cambios de comportamiento de reproducción, actualizar AGENTS.md (este archivo) —
+   es la memoria del proyecto para futuras sesiones/IA.
 
-Logs de verificación (cómo saber qué versión corre):
-- v4 actual: `Seamless reconnection enabled (keep-open + managed eof-reload + cascade backoff)`
-- Cortes: `Stream EOF - seamless reload in Ns (cascade N)`
+---
 
-Comandos útiles danko:
-```bash
-# ver logs en vivo
-/usr/bin/python3 ~/yuki-iptv/usr/lib/yuki-iptv/yuki-iptv.py
-# rollback total
-cp ~/yuki-iptv/usr/lib/yuki-iptv/yuki-iptv.py.bak-20260823 ~/yuki-iptv/usr/lib/yuki-iptv/yuki-iptv.py
-# validar sintaxis remota
-python3 -m py_compile ~/yuki-iptv/usr/lib/yuki-iptv/yuki-iptv.py
-```
+## 9. Roadmap (lo acordado)
+
+- **0.1 (actual)**: shell nuevo funcional + motor seamless + skins + video maximizado +
+  fix del cartel de carga (pendiente de validación del usuario).
+- **0.2+**: migrar a mpv externo + IPC JSON (mismo wid, mismos observers, crash-aislado);
+  grabación en el shell (ffmpeg con -reconnect*); EPG + catchup en el shell; gestión de
+  límite de conexiones simultáneas (idea de open-tv handle_max_streams); telemetría de
+  salud del stream (solo métricas/UI, NUNCA reconectar por paused-for-cache).
+- **Investigación pendiente**: salidas de video modernas post-Qt (render API
+  OpenGL/Vulkan, compositor propio, overlays GPU) sin perder keep-open + eof-reached +
+  cascade.

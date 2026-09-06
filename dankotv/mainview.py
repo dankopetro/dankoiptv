@@ -1,6 +1,6 @@
 """Vista principal Danko TV: video embebido + canales, layout declarativo."""
 import threading
-from PyQt6.QtCore import Qt, pyqtSignal, QObject
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont, QAction
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QListWidget,
@@ -12,14 +12,10 @@ from . import config as cfg
 from . import engine
 from . import layout as L
 from . import skins
-from .home import NewListDialog, load_spec
+from .home import NewListDialog, load_spec, _Bridge
 from .player import SeamlessPlayer
 
 DISPLAY_LIMIT = 2000
-
-
-class _Bridge(QObject):
-    done = pyqtSignal(object)
 
 
 class VideoFrame(QFrame):
@@ -51,7 +47,6 @@ class MainWindow(QMainWindow):
         self._cfg = cfg.load_settings()
         self.player = None
         self._playing_idx = -1
-        self._bridge = _Bridge()
         self.resize(1280, 720)
         self._build_ui()
         self.setStatusBar(QStatusBar())
@@ -236,19 +231,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Recargando lista...")
         self.setEnabled(False)
 
-        def work():
-            try:
-                if spec["type"] == "m3u":
-                    ch, gr = engine.load_m3u(spec["url"])
-                else:
-                    ch, gr = engine.load_xtream(spec["host"], spec["user"], spec["pass"])
-                self._bridge.done.emit((True, ch, gr, ""))
-            except Exception as e:
-                self._bridge.done.emit((False, [], [], str(e)))
-
-        def done(res):
+        def on_done(ok, ch, gr, err):
             self.setEnabled(True)
-            ok, ch, gr, err = res
             if not ok:
                 QMessageBox.warning(self, "Recargar", f"Fallo al recargar.\n{err}")
                 return
@@ -261,11 +245,18 @@ class MainWindow(QMainWindow):
             self.filter_channels()
             self.statusBar().showMessage(f"Recargados {len(ch)} canales", 5000)
 
-        try:
-            self._bridge.done.disconnect()
-        except Exception:
-            pass
-        self._bridge.done.connect(done)
+        bridge = _Bridge(on_done, self)
+
+        def work():
+            try:
+                if spec["type"] == "m3u":
+                    ch, gr = engine.load_m3u(spec["url"])
+                else:
+                    ch, gr = engine.load_xtream(spec["host"], spec["user"], spec["pass"])
+                bridge.done.emit((True, ch, gr, ""))
+            except Exception as e:
+                bridge.done.emit((False, [], [], str(e)))
+
         threading.Thread(target=work, daemon=True).start()
 
     def cycle_skin(self):
