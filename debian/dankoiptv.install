@@ -1,1 +1,6 @@
-debian/dankoiptv.desktop usr/share/applications/
+usr/bin/dankoiptv usr/bin/
+usr/lib/dankoiptv usr/lib/
+usr/share/applications/dankoiptv.desktop usr/share/applications/
+usr/share/icons usr/share/
+usr/share/dankoiptv usr/share/
+usr/share/locale usr/share/

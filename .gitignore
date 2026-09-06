@@ -17,4 +17,6 @@ appimagetool-x86_64.AppImage
 *.changes
 __pycache__/
 *.pyc
+*.mo
+usr/share/locale/
 .DS_Store
