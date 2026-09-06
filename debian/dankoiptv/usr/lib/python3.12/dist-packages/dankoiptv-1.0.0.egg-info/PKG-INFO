@@ -1,0 +1,8 @@
+Metadata-Version: 2.1
+Name: dankoiptv
+Version: 1.0.0
+Summary: Advanced IPTV Player with seamless reconnection for Linux Mint
+Author: Danko Petro
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: GNU General Public License v3 (GPLv3)
+Classifier: Operating System :: POSIX :: Linux

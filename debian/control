@@ -1,0 +1,22 @@
+Source: dankoiptv
+Section: video
+Priority: optional
+Maintainer: Danko Petro <danko@local>
+Build-Depends: debhelper-compat (= 13),
+               dh-python,
+               python3-setuptools,
+               python3-all
+Standards-Version: 4.6.2
+Homepage: https://github.com/dankopetro/dankoiptv
+
+Package: dankoiptv
+Architecture: all
+Depends: ${python3:Depends},
+         ${misc:Depends},
+         python3-pyqt6,
+         libmpv2,
+         python3-requests
+Description: Advanced IPTV Player with seamless reconnection for Linux Mint 22.3+
+ Dankoiptv combines libmpv embedded via ctypes and a robust PyQt6 interface
+ with production-verified seamless live stream reconnection (keep-open + eof-reached
+ observer with cascade backoff).
