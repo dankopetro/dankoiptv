@@ -12,6 +12,7 @@ from . import config as cfg
 from . import engine
 from . import layout as L
 from . import skins
+from .home import NewListDialog, load_spec
 from .player import SeamlessPlayer
 
 DISPLAY_LIMIT = 2000
@@ -41,22 +42,31 @@ class VideoFrame(QFrame):
 class MainWindow(QMainWindow):
     back_home = pyqtSignal()
 
-    def __init__(self, entry, channels, groups, version=""):
+    def __init__(self, entry=None, channels=None, groups=None, version=""):
         super().__init__()
-        self.entry = entry
-        self.channels = channels
+        self.entry = entry or {}
+        self.channels = channels or []
         self.filtered = []
         self._ver = version
         self._cfg = cfg.load_settings()
         self.player = None
         self._playing_idx = -1
         self._bridge = _Bridge()
-        self.setWindowTitle(f"Danko TV {version} — {entry.get('name')}")
         self.resize(1280, 720)
         self._build_ui()
         self.setStatusBar(QStatusBar())
-        self._set_groups(groups)
+        self.set_list(self.entry, self.channels, groups or [])
+
+    def set_list(self, entry, channels, groups):
+        """Carga una lista en la vista principal."""
+        self.entry = entry or {}
+        self.channels = channels or []
+        name = self.entry.get("name", "")
+        self.setWindowTitle(f"Danko TV {self._ver} — {name}" if name else f"Danko TV {self._ver} — Sin lista")
+        self._set_groups(groups or [])
         self.filter_channels()
+        if self.channels:
+            self.statusBar().showMessage(f"Lista '{name}': {len(self.channels)} canales", 5000)
 
     # --- UI construida desde layout.py ---
     def _build_ui(self):
@@ -185,9 +195,32 @@ class MainWindow(QMainWindow):
         self.back_home.emit()
 
     def add_list(self):
-        self.go_home()
+        """Pequeño menú para llenar la lista IPTV (nombre + URL/Xtream)."""
+        dlg = NewListDialog(self)
+        if not dlg.exec():
+            return
+        spec = dlg._spec
+        self.statusBar().showMessage(f"Descargando '{spec['name']}'...")
+        self.setEnabled(False)
+
+        def done(ok, ch, gr, err):
+            self.setEnabled(True)
+            if not ok or not ch:
+                QMessageBox.warning(self, "Error", f"No se pudo cargar la lista.\n{err}")
+                self.statusBar().showMessage("Sin lista — usa Listas > Nueva lista", 6000)
+                return
+            entry = dict(spec)
+            entry["channels"] = len(ch)
+            entry["groups"] = len(gr)
+            cfg.upsert_list(entry)
+            self.set_list(entry, ch, gr)
+
+        load_spec(spec, self, done)
 
     def reload_list(self):
+        if not self.entry.get("name") or not self.entry.get("type"):
+            self.add_list()
+            return
         spec = {k: self.entry[k] for k in ("name", "type", "url", "host", "user", "pass") if k in self.entry}
         self.statusBar().showMessage("Recargando lista...")
         self.setEnabled(False)

@@ -1,4 +1,4 @@
-"""Entry Danko TV: Home (Mis listas) -> Vista principal."""
+"""Entry Danko TV: app principal directo + mini menú de lista si está vacía."""
 import locale
 import os
 import sys
@@ -20,6 +20,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 import logging
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import QApplication
 
 from dankotv import __version__
@@ -40,28 +41,38 @@ def main():
     settings = cfg.load_settings()
     skins.apply_look(app, settings.get("skin"), settings.get("font_family"))
 
-    state = {"main": None}
     home = HomeWindow(version=__version__)
+    main = MainWindow(None, [], [], version=__version__)
 
     def open_entry(entry):
-        ch_gr = home._session_cache.get(entry["name"])
+        ch_gr = getattr(home, "_session_cache", {}).get(entry["name"])
         if not ch_gr:
             return
         ch, gr = ch_gr
-        main = MainWindow(entry, ch, gr, version=__version__)
+        main.set_list(entry, ch, gr)
+        home.hide()
+        main.show()
 
-        def back():
-            main.close()
-            home.refresh()
-            home.show()
+    def go_home():
+        home.refresh()
+        main.hide()
+        home.show()
 
-        main.back_home.connect(back)
-        state["main"] = main
+    def back_main():
         home.hide()
         main.show()
 
     home.open_list.connect(open_entry)
-    home.show()
+    home.back_main.connect(back_main)
+    main.back_home.connect(go_home)
+
+    if cfg.load_lists():
+        home.show()
+    else:
+        # Sin listas: app principal directo + mini menú de llenado
+        main.show()
+        QTimer.singleShot(400, main.add_list)
+
     sys.exit(app.exec())
 
 
