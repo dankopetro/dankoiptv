@@ -17,7 +17,8 @@ from .config import load_config, save_config, save_cache, load_cache
 class DankoWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Dankoiptv")
+        from . import __version__
+        self.setWindowTitle(f"Dankoiptv {__version__}")
         self.resize(1280, 720)
         self.channels = []
         self.filtered = []
@@ -111,7 +112,7 @@ class DankoWindow(QMainWindow):
                 # aviso no bloqueante una sola vez
                 if not hasattr(self, "_mpv_warned"):
                     self._mpv_warned = True
-                    QMessageBox.warning(self, "mpv", f"No se pudo iniciar mpv:\n{e}\n\nLa lista y categorías funcionan, pero el video no.\n\nSolución:\n  sudo apt update && sudo apt install libmpv2 mpv\n\nLuego reabre Dankoiptv.")
+                    QMessageBox.warning(self, "mpv", f"No se pudo iniciar mpv:\n{e}\n\nLa lista y categorías funcionan, pero el video no.\n\nSolución:\n  sudo apt update && sudo apt install libmpv2 mpv\n\nLog: ~/.config/dankoiptv/mpv_diag.log\nLuego reabre Dankoiptv.")
 
     # --- categorías + filtrado ---
     def rebuild_groups(self):
