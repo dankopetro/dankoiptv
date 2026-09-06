@@ -43,6 +43,7 @@ cp "build/AppDir/dankoiptv.png" "$BUILD_DIR/dankoiptv.png" 2>/dev/null || true
 cat << 'EOF' > "$BUILD_DIR/AppRun"
 #!/bin/bash
 HERE="$(dirname "$(readlink -f "${0}")")"
+export LC_NUMERIC=C
 export PYTHONPATH="${HERE}/usr/bin:${PYTHONPATH}"
 export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}:/usr/lib/x86_64-linux-gnu:/usr/lib"
 if ! ldconfig -p 2>/dev/null | grep -q libmpv; then
