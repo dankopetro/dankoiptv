@@ -20,6 +20,11 @@ def _diag():
     """Colecta diagnóstico para mensaje de error."""
     lines = []
     try:
+        import dankoiptv as _pkg
+        lines.append(f"dankoiptv {_pkg.__version__}")
+    except Exception:
+        pass
+    try:
         lines.append(f"find_library(mpv)={ctypes.util.find_library('mpv')}")
     except Exception as e:
         lines.append(f"find_library error: {e}")
@@ -27,14 +32,19 @@ def _diag():
         lines.append(f"{p} exists={os.path.exists(p)}")
     try:
         out = subprocess.run(["ldd", "/usr/lib/x86_64-linux-gnu/libmpv.so.2"], capture_output=True, text=True, timeout=3)
-        # primera línea con 'not found'
         if "not found" in out.stdout:
             lines.append("ldd: " + [l for l in out.stdout.splitlines() if "not found" in l][0])
+        else:
+            lines.append("ldd ok")
     except Exception as e:
         lines.append(f"ldd error: {e}")
     try:
         import sys
         lines.append(f"python {sys.version.split()[0]} arch={'64' if ctypes.sizeof(ctypes.c_void_p)==8 else '32'}")
+    except Exception:
+        pass
+    try:
+        lines.append(f"libmpv={getattr(libmpv, '_name', '?')}")
     except Exception:
         pass
     return " | ".join(lines)
@@ -130,10 +140,29 @@ def _err_str(code):
 
 class MPV:
     def __init__(self, wid=None, options=None):
-        # wid=0 es inválido — no setear
-        self.handle = libmpv.mpv_create()
-        if not self.handle:
-            raise RuntimeError(f"mpv_create devolvió NULL. {_diag()}")
+        # reintento por si el primer create falla por estado global (raro en AppImage)
+        last = None
+        for attempt in range(3):
+            try:
+                h = libmpv.mpv_create()
+            except Exception as e:
+                last = e
+                h = None
+            if h:
+                self.handle = h
+                break
+            last = f"attempt {attempt+1} NULL"
+            import time as _t; _t.sleep(0.05)
+        else:
+            # guarda diag en archivo para el usuario
+            diag = _diag()
+            try:
+                os.makedirs(os.path.expanduser("~/.config/dankoiptv"), exist_ok=True)
+                with open(os.path.expanduser("~/.config/dankoiptv/mpv_diag.log"), "w") as f:
+                    f.write(diag + f"\nlast={last}\n")
+            except Exception:
+                pass
+            raise RuntimeError(f"mpv_create devolvió NULL tras 3 intentos. {diag} | last={last}")
         if wid is not None and int(wid) != 0:
             v = ctypes.c_int64(int(wid))
             rc = libmpv.mpv_set_option(self.handle, b"wid", MPV_FORMAT_INT64, ctypes.byref(v))
