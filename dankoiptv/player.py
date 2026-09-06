@@ -9,12 +9,18 @@ log = logging.getLogger("dankoiptv.player")
 
 class IPTVPlayer:
     def __init__(self, wid=None, cache_secs=45):
+        # AGENTS §3-4: live = keep-open + no-force-seekable + cache 45s, sin prefetch/lavf-reconnect
         options = {
             "osc": "yes", "hwdec": "no", "ytdl": "no", "force-window": "yes",
             "cache": "yes", "demuxer-max-bytes": "150M",
             "demuxer-readahead-secs": str(cache_secs), "cache-secs": str(cache_secs),
+            "demuxer-max-back-bytes": "50M",
             "loglevel": "info",
+            # PROHIBIDOS ver AGENTS lección 1-2: no usar
+            # prefetch-playlist, stream-lavf-o=reconnect
         }
+        self._wid = wid
+        self._cache_secs = cache_secs
         self.mpv = MPV(wid=wid, options=options)
         self.is_live = True
         self.current_url = None
@@ -25,20 +31,37 @@ class IPTVPlayer:
         # eof-reached es FLAG — registrar con formato correcto
         self.mpv.register_property_observer("eof-reached", self._on_eof, fmt=MPV_FORMAT_FLAG)
 
+    def _ensure_mpv(self):
+        # si handle murió (segfault previo o terminate), recrear con mismo wid
+        if not self.mpv or not self.mpv.handle or not self.mpv._running:
+            log.info("Recreating MPV handle (was dead)")
+            self.mpv = MPV(wid=self._wid, options={
+                "osc": "yes", "hwdec": "no", "ytdl": "no", "force-window": "yes",
+                "cache": "yes", "demuxer-max-bytes": "150M",
+                "demuxer-readahead-secs": str(self._cache_secs), "cache-secs": str(self._cache_secs),
+                "demuxer-max-back-bytes": "50M", "loglevel": "info",
+            })
+            self.mpv.register_property_observer("eof-reached", self._on_eof, fmt=MPV_FORMAT_FLAG)
+
     def play(self, url, is_live=True):
+        self._ensure_mpv()
         self.current_url = url
         self.is_live = is_live
         self._stopped = False
         self._cascade = 0
         try:
             if is_live:
+                # AGENTS recet a final: live congela último frame sin negro
                 self.mpv.set_property("keep-open", True)
                 self.mpv.set_property("keep-open-pause", False)
                 self.mpv.set_property("loop-playlist", "no")
                 self.mpv.set_property("force-seekable", False)
+                self.mpv.set_property("cache-pause", False)
             else:
                 self.mpv.set_property("keep-open", False)
+                self.mpv.set_property("keep-open-pause", True)
                 self.mpv.set_property("force-seekable", True)
+                self.mpv.set_property("loop-playlist", "no")
         except Exception as e:
             log.warning(f"set_property live/vod failed: {e}")
         log.info(f"Playing {'LIVE' if is_live else 'VOD'}: {url[:80]}...")
@@ -48,9 +71,16 @@ class IPTVPlayer:
 
     def stop(self):
         self._stopped = True
-        try: self.mpv.set_property("keep-open", False)
-        except Exception: pass
-        self.mpv.stop()
+        self._reconnecting = False
+        try:
+            # AGENTS: al parar, restaurar keep_open=False para que logo no loopee
+            self.mpv.set_property("keep-open", False)
+        except Exception:
+            pass
+        try:
+            self.mpv.stop()
+        except Exception as e:
+            log.warning(f"stop failed: {e}")
 
     def _on_eof(self, val):
         if not self.is_live or self._stopped:
