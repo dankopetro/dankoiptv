@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="dankoiptv",
-    version="1.1c-20260906-1450",
+    version="1.1.4",
     description="Advanced IPTV Player with seamless reconnection for Linux Mint",
     author="Danko Petro",
     packages=find_packages(),

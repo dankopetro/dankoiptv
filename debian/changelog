@@ -1,3 +1,9 @@
+dankoiptv (1.1.4-1) unstable; urgency=medium
+
+  * Fix categorías no aparecen + lista 344k: signal thread-safe + límite 2000.
+
+ -- Danko Petro <danko@local>  Sat, 06 Sep 2026 15:04:00 +0000
+
 dankoiptv (1.1c-20260906-1450) unstable; urgency=medium
 
   * Fix locale en AppRun + main antes de importar mpv.
