@@ -97,11 +97,21 @@ class DankoWindow(QMainWindow):
     def showEvent(self, event):
         super().showEvent(event)
         if not self.player and self.isVisible():
+            # crear player sin bloquear UI; categorías funcionan aunque mpv falle
             try:
                 wid = int(self.video_frame.winId())
+                if wid == 0:
+                    raise RuntimeError("winId inválido (0) — ventana aún no nativa")
                 self.player = IPTVPlayer(wid=wid, cache_secs=int(self._cfg.get("cache_secs", 45)))
+                self.statusBar().showMessage("Reproductor listo", 3000)
             except Exception as e:
-                QMessageBox.warning(self, "mpv", f"No se pudo iniciar mpv: {e}\nInstala libmpv2.")
+                # no modal bloqueante: permite usar lista/categorías igual
+                self.player = None
+                self.statusBar().showMessage(f"mpv no disponible: {e} — categorías sí funcionan. Instala: sudo apt install libmpv2 mpv", 8000)
+                # aviso no bloqueante una sola vez
+                if not hasattr(self, "_mpv_warned"):
+                    self._mpv_warned = True
+                    QMessageBox.warning(self, "mpv", f"No se pudo iniciar mpv:\n{e}\n\nLa lista y categorías funcionan, pero el video no.\n\nSolución:\n  sudo apt update && sudo apt install libmpv2 mpv\n\nLuego reabre Dankoiptv.")
 
     # --- categorías + filtrado ---
     def rebuild_groups(self):
@@ -227,8 +237,14 @@ class DankoWindow(QMainWindow):
         if 0 <= row < len(self.filtered):
             ch = self.filtered[row]
             if not self.player:
-                QMessageBox.warning(self, "Reproductor", "Reproductor no iniciado aún.")
-                return
+                # intentar recrear player por si era fallo transitorio de wid
+                try:
+                    wid = int(self.video_frame.winId())
+                    self.player = IPTVPlayer(wid=wid, cache_secs=int(self._cfg.get("cache_secs", 45)))
+                    self.statusBar().showMessage("Reproductor reiniciado", 3000)
+                except Exception as e:
+                    QMessageBox.warning(self, "Reproductor", f"mpv no disponible:\n{e}\n\nInstala libmpv2: sudo apt install libmpv2 mpv")
+                    return
             self.now_label.setText(ch.name)
             self.statusBar().showMessage(f"Reproduciendo: {ch.name} [{ch.group}]", 4000)
             try:
