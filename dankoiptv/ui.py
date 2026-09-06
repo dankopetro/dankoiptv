@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """PyQt6 UI — categorías, persistencia híbrida, recarga, WA_NativeWindow."""
 import threading
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal, QObject
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QListWidget, QLineEdit, QPushButton, QLabel, QSplitter, QFrame,
@@ -13,6 +13,12 @@ from .player import IPTVPlayer
 from .iptv import PlaylistParser
 from .config import load_config, save_config, save_cache, load_cache
 
+# Límite para no congelar QListWidget con 300k+ canales
+DISPLAY_LIMIT = 2000
+
+
+class _SignalBridge(QObject):
+    done = pyqtSignal(object)
 
 class DankoWindow(QMainWindow):
     def __init__(self):
@@ -24,6 +30,7 @@ class DankoWindow(QMainWindow):
         self.filtered = []
         self.player = None
         self._cfg = load_config()
+        self._bridge = _SignalBridge()
         self.init_ui()
         self.setStatusBar(QStatusBar())
         # carga híbrida: cache inmediata + refresh background
@@ -146,9 +153,14 @@ class DankoWindow(QMainWindow):
 
     def update_list(self):
         self.channel_list.clear()
-        for ch in self.filtered:
+        total = len(self.filtered)
+        show = self.filtered[:DISPLAY_LIMIT]
+        for ch in show:
             self.channel_list.addItem(ch.name)
-        self.statusBar().showMessage(f"{len(self.filtered)}/{len(self.channels)} canales — {self.group_combo.count()-1} categorías", 5000)
+        if total > DISPLAY_LIMIT:
+            self.channel_list.addItem(f"— y {total - DISPLAY_LIMIT} más (filtra por categoría/búsqueda) —")
+            self.channel_list.item(self.channel_list.count()-1).setFlags(self.channel_list.item(self.channel_list.count()-1).flags() & ~Qt.ItemFlag.ItemIsSelectable)
+        self.statusBar().showMessage(f"{total}/{len(self.channels)} canales — {self.group_combo.count()-1} categorías" + (f" (mostrando {min(total, DISPLAY_LIMIT)})" if total>DISPLAY_LIMIT else ""), 6000)
 
     def set_channels(self, channels, save=True):
         self.channels = channels
@@ -179,16 +191,20 @@ class DankoWindow(QMainWindow):
 
     def _fetch_and_set(self, url):
         channels = PlaylistParser.fetch_playlist_with_timeout(url, timeout=120)
-        # volver al hilo UI
-        def done():
-            if channels:
-                self.set_channels(channels, save=True)
-                self.statusBar().showMessage(f"Actualizados {len(channels)} canales", 5000)
+        # cruzar al hilo Qt vía señal (QTimer desde worker no tiene event loop)
+        def _done(chs):
+            if chs:
+                self.set_channels(chs, save=True)
+                self.statusBar().showMessage(f"Actualizados {len(chs)} canales", 5000)
             else:
                 self.statusBar().showMessage("Fallo al descargar — se mantiene cache", 6000)
-        # QTimer para cruzar al hilo Qt sin señal custom
-        from PyQt6.QtCore import QTimer
-        QTimer.singleShot(0, done)
+        # usar bridge signal para thread-safe
+        try:
+            self._bridge.done.disconnect()
+        except Exception:
+            pass
+        self._bridge.done.connect(_done)
+        self._bridge.done.emit(channels)
 
     def prompt_load_playlist(self):
         url, ok = QInputDialog.getText(self, "Cargar lista", "URL M3U (http...):", text=self._cfg.get("last_playlist_url", ""))
@@ -197,20 +213,22 @@ class DankoWindow(QMainWindow):
         url = url.strip()
         save_config({"last_playlist_url": url})
         self._cfg["last_playlist_url"] = url
-        self.statusBar().showMessage("Descargando...")
+        self.statusBar().showMessage(f"Descargando {url[:60]}... (87 MB puede tardar 15-20s)")
         self.load_btn.setEnabled(False)
         def worker():
             channels = PlaylistParser.fetch_playlist_with_timeout(url, timeout=120)
-            from PyQt6.QtCore import QTimer
-            def done():
+            def _done(chs):
                 self.load_btn.setEnabled(True)
-                if not channels:
+                if not chs:
                     QMessageBox.warning(self, "Error", "No se pudo descargar o parsear la lista.\nVerifica la URL.")
                     self.statusBar().showMessage("Error al cargar lista", 5000)
                     return
-                self.set_channels(channels, save=True)
-                QMessageBox.information(self, "OK", f"Cargados {len(channels)} canales en {len({c.group for c in channels})} categorías.")
-            QTimer.singleShot(0, done)
+                self.set_channels(chs, save=True)
+                QMessageBox.information(self, "OK", f"Cargados {len(chs)} canales en {len({c.group for c in chs})} categorías.")
+            try: self._bridge.done.disconnect()
+            except Exception: pass
+            self._bridge.done.connect(_done)
+            self._bridge.done.emit(channels)
         threading.Thread(target=worker, daemon=True).start()
 
     def reload_playlist(self):
@@ -222,15 +240,17 @@ class DankoWindow(QMainWindow):
         self.reload_btn.setEnabled(False)
         def worker():
             channels = PlaylistParser.fetch_playlist_with_timeout(url, timeout=120)
-            from PyQt6.QtCore import QTimer
-            def done():
+            def _done(chs):
                 self.reload_btn.setEnabled(True)
-                if not channels:
+                if not chs:
                     QMessageBox.warning(self, "Recargar", "Fallo al recargar. Se mantiene la lista actual.")
                     return
-                self.set_channels(channels, save=True)
-                self.statusBar().showMessage(f"Recargados {len(channels)} canales", 5000)
-            QTimer.singleShot(0, done)
+                self.set_channels(chs, save=True)
+                self.statusBar().showMessage(f"Recargados {len(chs)} canales", 5000)
+            try: self._bridge.done.disconnect()
+            except Exception: pass
+            self._bridge.done.connect(_done)
+            self._bridge.done.emit(channels)
         threading.Thread(target=worker, daemon=True).start()
 
     def on_channel_selected(self, item):
