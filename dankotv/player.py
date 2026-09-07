@@ -35,6 +35,7 @@ class SeamlessPlayer:
             title="Danko TV",
             **{"force-window": True},
             **{"audio-client-name": "dankotv"},
+            **{"input-vo-keyboard": False},
             loglevel="info",
             **{
                 "script-opts": (

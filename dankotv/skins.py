@@ -41,7 +41,7 @@ def resolve_font(preferred):
     return fams[0]
 
 
-def app_font(family=None, size=10, medium=True):
+def app_font(family=None, size=10, medium=False):
     fam = resolve_font(family or DEFAULT_FONT)
     f = QFont(fam, size)
     if medium:
@@ -56,23 +56,28 @@ def stylesheet(skin_name, font_family=None):
     c = SKINS.get(skin_name, SKINS[DEFAULT_SKIN])
     fam = resolve_font(font_family or DEFAULT_FONT)
     return f"""
-    QWidget {{ background-color: {c['bg']}; color: {c['text']}; font-family: '{fam}'; }}
+    QWidget {{ background-color: {c['bg']}; color: {c['text']}; font-family: '{fam}'; font-size: 10pt; }}
     QMainWindow {{ background-color: {c['bg']}; }}
-    QMenuBar {{ background-color: {c['panel']}; border-bottom: 1px solid {c['accent']}; }}
+    QMenuBar {{ background-color: {c['panel']}; border-bottom: 1px solid {c['accent']}; font-size: 12pt; font-weight: 600; color: {c['text']}; }}
+    QMenuBar::item {{ background: transparent; color: {c['text']}; padding: 6px 14px; }}
     QMenuBar::item:selected {{ background-color: {c['sel']}; color: {c['accent2']}; }}
-    QMenu {{ background-color: {c['panel']}; border: 1px solid {c['accent']}; }}
+    QMenuBar::item:pressed {{ background-color: {c['sel']}; color: {c['accent2']}; }}
+    QMenu {{ background-color: {c['panel']}; border: 1px solid {c['accent']}; font-size: 10pt; color: {c['text']}; }}
+    QMenu::item {{ background: transparent; color: {c['text']}; padding: 5px 24px 5px 14px; }}
     QMenu::item:selected {{ background-color: {c['sel']}; color: {c['accent2']}; }}
-    QListWidget {{ background-color: {c['panel']}; border: 1px solid {c['accent']}; border-radius: 10px; padding: 6px; }}
-    QListWidget::item {{ border-radius: 6px; padding: 4px; }}
+    QListWidget {{ background-color: {c['panel']}; border: 1px solid {c['accent']}; border-radius: 10px; padding: 6px; font-size: 10pt; }}
+    QListWidget::item {{ border-radius: 6px; padding: 3px; }}
     QListWidget::item:selected {{ background-color: {c['sel']}; color: {c['accent2']}; border-left: 3px solid {c['accent']}; }}
-    QLineEdit, QComboBox, QSpinBox {{ background-color: {c['panel']}; border: 1px solid {c['accent']}; border-radius: 8px; padding: 7px; color: {c['text']}; }}
-    QPushButton {{ background-color: {c['accent']}; color: #0A0A0A; border: none; border-radius: 8px; padding: 8px 14px; font-weight: 600; }}
+    QLineEdit, QComboBox, QSpinBox {{ background-color: {c['panel']}; border: 1px solid {c['accent']}; border-radius: 8px; padding: 5px 7px; color: {c['text']}; font-size: 10pt; }}
+    QPushButton {{ background-color: {c['accent']}; color: #0A0A0A; border: none; border-radius: 8px; padding: 5px 10px; font-weight: 600; font-size: 10pt; }}
     QPushButton:hover {{ background-color: {c['accent2']}; }}
     QPushButton:pressed {{ background-color: {c['accent']}; }}
     QPushButton:disabled {{ background-color: {c['panel']}; color: {c['sub']}; }}
-    QStatusBar {{ background-color: {c['panel']}; border-top: 1px solid {c['accent']}; }}
+    QPushButton#favBtn {{ background-color: {c['panel']}; color: {c['sub']}; font-size: 14pt; padding: 4px 10px; min-width: 32px; }}
+    QPushButton#favBtn:checked {{ background-color: {c['accent']}; color: #0A0A0A; }}
+    QStatusBar {{ background-color: {c['panel']}; border-top: 1px solid {c['accent']}; font-size: 10pt; }}
     QTabWidget::pane {{ border: 1px solid {c['accent']}; }}
-    QTabBar::tab {{ background-color: {c['panel']}; padding: 7px 14px; border-top-left-radius: 8px; border-top-right-radius: 8px; }}
+    QTabBar::tab {{ background-color: {c['panel']}; padding: 5px 12px; border-top-left-radius: 8px; border-top-right-radius: 8px; font-size: 10pt; }}
     QTabBar::tab:selected {{ background-color: {c['sel']}; color: {c['accent2']}; }}
     QFrame#videoFrame {{ border: 2px solid {c['accent']}; border-radius: 12px; }}
     QFrame#card {{ background-color: {c['panel']}; border: 1px solid {c['accent']}; border-radius: 12px; }}

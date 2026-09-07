@@ -22,10 +22,10 @@ propios durante el desarrollo. NO repetir errores ya probados.
   se cierre solo al terminar la descarga (ver §6.2 para el detalle del bug corregido).
 
 ### Qué es cada cosa (tres superficies en el mismo repo)
-1. **Dankoiptv** (`usr/lib/dankoiptv/`, builds `1.1g-*`): el MOTOR base — fork directo de
-   yuki-iptv renombrado. Monolito completo con EPG, grabación, catchup, editor de listas,
-   multi-EPG, MPRIS, i18n. Es una app completa por sí misma y TAMBIÉN es la librería que
-   usa Danko TV (M3UParser, XTream, binding mpv).
+1. **Dankoiptv** (`usr/lib/dankoiptv/`, builds `1.1g-*`): el MOTOR base — proyecto propio
+   (Python/PyQt6 + libmpv embebido). Monolito completo con EPG, grabación, catchup, editor
+   de listas, multi-EPG, MPRIS, i18n. Es una app completa por sí misma y TAMBIÉN es la
+   librería que usa Danko TV (M3UParser, XTream, binding mpv).
 2. **Danko TV** (`dankotv/`, builds `0.1-*`): el SHELL nuevo, modular, la app del futuro.
    Ventana integrada con libmpv, sin ventanas separadas. Reutiliza el motor base.
 3. **Web (Vercel)** (`index.html` en la raíz + copia `web/index.html`): player IPTV en el
@@ -37,15 +37,15 @@ propios durante el desarrollo. NO repetir errores ya probados.
 ## 1. Historia y decisiones (por qué es así)
 
 ### Origen (sesión 23/08/2026)
-- Se investigaron a fondo **yuki-iptv** (Python/PyQt6 + libmpv embebido) y **open-tv** (Fredolx,
-  Rust/Tauri + mpv externo). Se parchó yuki en producción (laptop danko, TV) hasta lograr
-  reconexión seamless real. Todas las lecciones empíricas en §4 y §5.
-- Decisión de stack: **Python 3.12 + PyQt6 + libmpv embebido** (estilo Yuki, ventana
-  integrada, control total de eventos) — NO mpv externo como Fred (ventana separada, sin control).
+- Se investigaron a fondo dos arquitecturas: **reproductor Python/PyQt6 + libmpv embebido**
+  vs **open-tv** (Fredolx, Rust/Tauri + mpv externo). Se probó en producción (laptop danko,
+  TV) hasta lograr reconexión seamless real. Todas las lecciones empíricas en §4 y §5.
+- Decisión de stack: **Python 3.12 + PyQt6 + libmpv embebido** (ventana integrada, control
+  total de eventos) — NO mpv externo como Fred (ventana separada, sin control).
 
-### Renombres y versiones
-- Fork de yuki-iptv renombrado 100% a "Dankoiptv" (commit `066e7d3`): `grep -ri yuki` en
-  código/UI = 0 resultados. Licencia GPL-3.0 (heredada de yuki, permite fork).
+### Nombres y versiones
+- Proyecto 100% propio bajo nombre "Dankoiptv": `grep -ri yuki` en código/UI = 0
+  resultados. Licencia GPL-3.0.
 - Esquema de versiones (`./version.sh`): `0.<minor>-AAAAMMDD-HHMM`.
   - minor = meses desde sep-2026 + 1 (sep-2026 → 0.1, oct-2026 → 0.2, ...)
   - major = años desde 2026 (2027 → 1.0)
@@ -59,7 +59,7 @@ propios durante el desarrollo. NO repetir errores ya probados.
 - Flujo decidido por el usuario: la app abre DIRECTO en la ventana principal (sin Home
   intermedio); si no hay listas guardadas, lanza mini menú "Nueva lista" automático
   (`QTimer.singleShot(400, main.add_list)` en `app.py:74`).
-- Modo **pantalla completa** (estilo Yuki): doble clic sobre el video, botón ⛶, F11 o Esc
+- Modo **pantalla completa**: doble clic sobre el video, botón ⛶, F11 o Esc
   llaman `QMainWindow.showFullScreen()` (cubre el monitor, no solo la ventana). Lista y
   barra de controles se reparentan a shells frameless (`X11BypassWindowManagerHint`,
   opacidad 0.75) porque libmpv pinta encima de widgets Qt hermanos. La lista en FS usa
@@ -93,7 +93,7 @@ Dankoiptv/
 │   ├── layout.py          ← MENUS/TOOLBAR declarativos (labels + slots por nombre)
 │   ├── skins.py           ← 12 skins + fuentes (apply_look)
 │   └── assets/            ← logo-256.png, logo-512.png, dankotv.svg, main.png
-├── usr/lib/dankoiptv/     ← MOTOR base (fork yuki renombrado, app 1.x Y librería)
+├── usr/lib/dankoiptv/     ← MOTOR base (app 1.x Y librería del shell)
 │   ├── dankoiptv.py       ← entry del motor (~6300 líneas, monolito)
 │   ├── dankoiptv_lib/     ← 33 módulos: playlist, EPG, gui, record, xtream, mpris...
 │   └── thirdparty/        ← mpv.py (binding libmpv ctypes) + xtream.py
@@ -172,8 +172,8 @@ No se puede "adelantar" un `.ts` Xtream más allá de lo que el servidor está e
 
 ## 5. Motor base: datos útiles
 
-- `usr/lib/dankoiptv/thirdparty/mpv.py` — binding libmpv via ctypes (fork del python-mpv de
-  yuki): maneja el hilo de eventos, property_observer, event_callback, on_key_press, overlays.
+- `usr/lib/dankoiptv/thirdparty/mpv.py` — binding libmpv via ctypes (fork del python-mpv):
+  maneja el hilo de eventos, property_observer, event_callback, on_key_press, overlays.
 - `usr/lib/dankoiptv/thirdparty/xtream.py` — cliente Xtream (login player_api.php, catchup).
 - `dankoiptv_lib/playlist_m3u.py` M3UParser, `requests_timeout.py` (timeout TOTAL de descarga
   vía sys.settrace — el timeout nativo de requests NO cubre tiempo total; para playlists
@@ -241,7 +241,7 @@ Aplicado en: `load_spec()`, `test_connection()`, `load_and_store()` (home.py) y
   gestor de archivos o `./dankotv-x86_64.AppImage` en una terminal del usuario.
 - **danko** (192.168.0.200, user `danko`, SSH con clave BatchMode OK): laptop conectada al
   TV, donde SE USA el IPTV. Python 3.12.3 sistema, mpv 0.37.0, Qt 6.4.2 (xcb), pipewire.
-  Corre el yuki parcheado en `~/yuki-iptv/` (referencia del motor seamless que FUNCIONA;
+  Corre el reproductor parcheado en `~/yuki-iptv/` (referencia del motor seamless que FUNCIONA;
   backup `yuki-iptv.py.bak-20260823`).
 
 ### Clones de referencia (en /tmp, re-clonar si no existen)
@@ -249,7 +249,7 @@ Aplicado en: `load_spec()`, `test_connection()`, `load_and_store()` (home.py) y
 git clone --depth 1 https://github.com/itachi-re/yuki-iptv.git /tmp/opencode/yuki-iptv
 git clone --depth 1 https://github.com/Fredolx/open-tv.git /tmp/opencode/open-tv
 ```
-- yuki: `usr/lib/yuki-iptv/yuki-iptv.py` (doPlay ~1346, init_mpv_player ~1573,
+- reproductor base: `usr/lib/yuki-iptv/yuki-iptv.py` (doPlay ~1346, init_mpv_player ~1573,
   do_reconnect/end_file_error_callback ~4329-4408, check_connection ~5411)
 - open-tv: `src-tauri/src/mpv.rs` (get_play_args 143-206), `restream.rs`, `utils.rs`
   (handle_max_streams). Licencia GPL-2.0: SOLO ideas, NO copiar código (incompatible).
@@ -273,8 +273,8 @@ git clone --depth 1 https://github.com/Fredolx/open-tv.git /tmp/opencode/open-tv
 
 ## 9. Roadmap (lo acordado)
 
-- **0.1 (actual)**: shell nuevo funcional + motor seamless + skins + pantalla completa
-  estilo Yuki + fix del cartel de carga (pendiente de validación del usuario).
+- **0.1 (actual)**: shell nuevo funcional + motor seamless + skins + pantalla completa +
+  fix del cartel de carga (pendiente de validación del usuario).
 - **0.2+**: migrar a mpv externo + IPC JSON (mismo wid, mismos observers, crash-aislado);
   grabación en el shell (ffmpeg con -reconnect*); EPG + catchup en el shell; gestión de
   límite de conexiones simultáneas (idea de open-tv handle_max_streams); telemetría de
