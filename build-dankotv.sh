@@ -9,11 +9,21 @@ echo "$VER" > dankotv/VERSION.txt
 # inyectar versión en copia de trabajo (no en fuente)
 inject() { grep -rl "__DANKOTV_VERSION__" "$1" | xargs sed -i "s/__DANKOTV_VERSION__/$VER/g"; }
 
-# ---------- .deb (dpkg-deb directo) ----------
+# ---------- .deb (autocontenido: shell + motor + assets, como la AppImage) ----------
 PKGDIR="build/dankotv-deb"
 rm -rf "$PKGDIR"
 mkdir -p "$PKGDIR/DEBIAN" "$PKGDIR/usr/bin" "$PKGDIR/usr/lib/dankotv" "$PKGDIR/usr/share/applications" "$PKGDIR/usr/share/icons/hicolor/scalable/apps" "$PKGDIR/usr/share/pixmaps"
 cp -r dankotv "$PKGDIR/usr/lib/dankotv/"
+# motor base adentro (mismo layout que la AppImage: no depende del paquete dankoiptv)
+cp -r usr/lib/dankoiptv "$PKGDIR/usr/lib/"
+cp -r usr/share/dankoiptv "$PKGDIR/usr/share/"
+mkdir -p "$PKGDIR/usr/share/locale"
+for f in po/dankoiptv-*.po; do
+  lang=$(basename "$f" .po | sed 's/dankoiptv-//')
+  mkdir -p "$PKGDIR/usr/share/locale/$lang/LC_MESSAGES"
+  msgfmt -o "$PKGDIR/usr/share/locale/$lang/LC_MESSAGES/dankoiptv.mo" "$f"
+done
+find "$PKGDIR" -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
 inject "$PKGDIR/usr/lib/dankotv"
 cat > "$PKGDIR/usr/bin/dankotv" << 'EOF'
 #!/bin/bash
@@ -40,12 +50,12 @@ Version: $VER
 Section: video
 Priority: optional
 Architecture: all
-Depends: dankoiptv, python3-pyqt6, python3-requests, libmpv2, mpv
+Depends: python3-pyqt6, python3-requests, libmpv2, mpv
 Installed-Size: $DEBSIZE
 Maintainer: Danko Petro <danko@example.com>
 Description: Danko TV - reproductor IPTV con reconexión seamless
  Pantalla Mis listas, layouts declarativos, 12 skins, logo propio.
- Motor libmpv embebido con keep-open + eof-reached cascade.
+ Motor libmpv embebido con keep-open + eof-reached cascade (autocontenido).
 EOF
 DEB="../dankotv_${VER}_all.deb"
 fakeroot dpkg-deb --build "$PKGDIR" "$DEB" 2>/dev/null || dpkg-deb --build "$PKGDIR" "$DEB"
