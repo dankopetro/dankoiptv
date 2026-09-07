@@ -1,38 +1,46 @@
-# Dankoiptv
+# Danko TV
 
-Reproductor IPTV para Linux (Mint 22.3+) con EPG, Xtream API, grabación,
-catchup, multi-EPG y MPRIS.
+Reproductor IPTV propio para Linux (Mint 22.3+) con reconexión seamless
+(sin pantallas negras ni rebobinados), 12 skins naranjas/dark y logo propio.
 
-## Diferencias propias
+## Las tres superficies
+
+1. **Danko TV** (`dankotv/`, versión 0.x): la app de escritorio — shell PyQt6
+   modular con video libmpv embebido, pantalla Mis listas, pantalla completa,
+   favoritos, menús contextuales. Reutiliza el motor base.
+2. **Motor Dankoiptv** (`usr/lib/dankoiptv/`, versión 1.1g): librería y app
+   completa con EPG, grabación, catchup, editor de listas, multi-EPG, MPRIS,
+   i18n. El shell lo usa (M3UParser, XTream, binding mpv).
+3. **Danko TV Web** (`index.html`, deploy Vercel): player IPTV en el navegador
+   (HLS/DASH/mpegts + Cast). Hay copia de trabajo en `web/index.html`
+   (mantener sincronizadas).
+
+## Características
 - **Motor seamless**: keep-open + observador `eof-reached` + backoff en
-  cascada para live (sin pantallas negras ni rebobinados).
-- **Skins**: 7 temas oscuros (naranja por defecto) en Ajustes → GUI.
-- **Fuente**: Ubuntu Medium con fallback Noto Sans.
-- **Doble clic** sobre el video alterna pantalla completa.
+  cascada para live (congela en el último frame en vez de negro).
+- **12 skins** naranjas/dark + fuentes (Ubuntu/Noto/Inter/Cantarell/DejaVu).
+- **Pantalla completa**: doble clic, botón ⛶, F11 o Esc.
+- **Favoritos** por lista, búsqueda y filtro por grupo.
+- M3U (URL) y Xtream API (host/usuario/clave).
 
-## Estructura
-- `usr/lib/dankoiptv/dankoiptv.py` — entry point
-- `usr/lib/dankoiptv/dankoiptv_lib/` — 33 módulos (playlist, EPG, GUI...)
-- `usr/lib/dankoiptv/thirdparty/` — binding libmpv + cliente Xtream
-- `usr/share/dankoiptv/` — iconos, `usr/share/locale/` — traducciones (.mo)
-- `po/` — fuentes de traducción
-
-## Versiones de prueba 1.x
-Cada build test se versiona `1.1g`, `1.1h`... con fecha (`VERSION`):
-- `.deb`: `../dankoiptv_1.1g-20260906-1610_all.deb`
-- AppImage: `dankoiptv-1.1g-20260906-1610-x86_64.AppImage`
-
-## Build local (sin subir a GitHub hasta probar)
+## Instalación (laptop con Mint 22.3+)
 ```bash
-dpkg-buildpackage -us -uc -b   # .deb
-./build-appimage.sh            # AppImage
+sudo apt install ./dankotv_0.1-<fecha>_all.deb
+# o la AppImage (autocontenida):
+./dankotv-0.1-<fecha>-x86_64.AppImage
+# deps del sistema: python3-pyqt6 python3-requests libmpv2 mpv
 ```
+El `.deb` es autocontenido (incluye el motor); no necesita otro paquete.
+La AppImage también es autocontenida y no necesita instalación.
 
-## Instalación
+## Build (desarrolladores)
 ```bash
-sudo apt install ./../dankoiptv_1.1g-20260906-1610_all.deb
-# deps: ffmpeg libmpv2 mpv python3-gi python3-pyqt6 python3-chardet python3-requests
+./build-dankotv.sh          # .deb + AppImage, versión auto por fecha (./version.sh)
+python3 -m py_compile dankotv/*.py   # validar antes de build
+python3 dankotv/app.py      # probar desde fuente
 ```
+Detalle de arquitectura, lecciones empíricas y proceso: ver `AGENTS.md`.
+Roadmap: ver `ROADMAP.md`.
 
 ## Licencia
 GPL-3.0 (ver `COPYING`)

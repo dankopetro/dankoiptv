@@ -228,7 +228,10 @@ Aplicado en: `load_spec()`, `test_connection()`, `load_and_store()` (home.py) y
 ### 6.4 Cosas verificadas sobre AppImage/deb del shell
 - PYTHONPATH del AppRun: `${HERE}/usr/lib:${HERE}/usr/lib/dankoiptv` — el shell importa el
   motor desde ahí (`ensure_engine_path()` en engine.py también lo resuelve solo).
-- El .deb del shell DEPENDE del paquete `dankoiptv` (el motor) — instalar ambos para probar deb.
+- El .deb del shell es AUTOCONTENIDO (desde 0.1-20260907): bundlea `usr/lib/dankoiptv` +
+  `usr/share/dankoiptv` + locale .mo, igual que la AppImage. Depends solo sistema
+  (python3-pyqt6, python3-requests, libmpv2, mpv). OJO: si el paquete `dankoiptv` 1.x está
+  instalado, hay conflicto de archivos en `/usr/lib/dankoiptv` (desinstalarlo primero).
 - AppImage necesita libmpv del sistema (no la bundlea): `sudo apt install libmpv2 mpv`.
 
 ---
