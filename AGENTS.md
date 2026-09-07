@@ -4,15 +4,16 @@
 fue verificado empíricamente (probado en vivo contra IPTV real) o aprendido por errores
 propios durante el desarrollo. NO repetir errores ya probados.
 
-Última actualización: 06/09/2026 (post-fix hilo Qt, build 0.1-20260906-1914)
+Última actualización: 06/09/2026 (web Vercel en raíz + copia `web/`)
 
 ---
 
 ## 0. Estado ACTUAL del proyecto
 
 - **Danko TV 0.1** (`0.1-20260906-1914`): shell nuevo PyQt6 funcional, en pruebas del usuario.
-- **Todo local**: git repo en `~/Projects/Dankoiptv`, builds `.deb` + `.AppImage` locales,
-  NADA subido a GitHub aún (decisión del usuario: probar antes de publicar).
+- **GitHub**: `https://github.com/dankopetro/dankoiptv.git` (rama `main`). Push solo cuando
+  el usuario lo pida. El sitio Vercel sirve el `index.html` de la **raíz** del repo:
+  no moverlo ni reemplazarlo por otra app; hay una copia de trabajo en `web/index.html`.
 - **Últimos builds válidos** (en la raíz del repo, generados por `./build-dankotv.sh`):
   - `dankotv-0.1-20260906-1914-x86_64.AppImage` (864K) ← **el bueno para probar**
   - `../dankotv_0.1-20260906-1914_all.deb` (52K)
@@ -20,13 +21,16 @@ propios durante el desarrollo. NO repetir errores ya probados.
 - **Pendiente de prueba por el usuario** (build 1914): que el cartel "Cargando lista..."
   se cierre solo al terminar la descarga (ver §6.2 para el detalle del bug corregido).
 
-### Qué es cada cosa (dos apps en el mismo repo)
+### Qué es cada cosa (tres superficies en el mismo repo)
 1. **Dankoiptv** (`usr/lib/dankoiptv/`, builds `1.1g-*`): el MOTOR base — fork directo de
    yuki-iptv renombrado. Monolito completo con EPG, grabación, catchup, editor de listas,
    multi-EPG, MPRIS, i18n. Es una app completa por sí misma y TAMBIÉN es la librería que
    usa Danko TV (M3UParser, XTream, binding mpv).
 2. **Danko TV** (`dankotv/`, builds `0.1-*`): el SHELL nuevo, modular, la app del futuro.
    Ventana integrada con libmpv, sin ventanas separadas. Reutiliza el motor base.
+3. **Web (Vercel)** (`index.html` en la raíz + copia `web/index.html`): player IPTV en el
+   navegador (HLS/DASH/mpegts + Cast). El deploy de Vercel espera el HTML en la raíz;
+   `web/` es la copia para no perderla si se reorganiza el repo. No borrar `./index.html`.
 
 ---
 
@@ -55,8 +59,15 @@ propios durante el desarrollo. NO repetir errores ya probados.
 - Flujo decidido por el usuario: la app abre DIRECTO en la ventana principal (sin Home
   intermedio); si no hay listas guardadas, lanza mini menú "Nueva lista" automático
   (`QTimer.singleShot(400, main.add_list)` en `app.py:74`).
-- Modo **video maximizado** (commit `6580fc7`): doble clic sobre el video, botón ⛶, F11 o Esc
-  alternan; oculta sidebar/menubar/statusbar/now_label, el video llena la ventana.
+- Modo **pantalla completa** (estilo Yuki): doble clic sobre el video, botón ⛶, F11 o Esc
+  llaman `QMainWindow.showFullScreen()` (cubre el monitor, no solo la ventana). Lista y
+  barra de controles se reparentan a shells frameless (`X11BypassWindowManagerHint`,
+  opacidad 0.75) porque libmpv pinta encima de widgets Qt hermanos. La lista en FS usa
+  además `Popup` y foco en el buscador: sin eso el teclado no llega (X11 Bypass). Un
+  QTimer 100 ms lee
+  `QCursor.pos()`: solo si el cursor está en el borde izquierdo aparece la lista; solo si
+  está sobre el rectángulo de la barra (centrada abajo) aparecen los controles. Fuera de
+  esas zonas no se muestra nada. Cursor en blanco tras ~1 s quieto. OSC de mpv se apaga en FS.
 
 ---
 
@@ -66,6 +77,8 @@ propios durante el desarrollo. NO repetir errores ya probados.
 Dankoiptv/
 ├── AGENTS.md              ← este archivo
 ├── README.md, ROADMAP.md, COPYING (GPL-3.0)
+├── index.html             ← web app Vercel (NO mover: el deploy apunta a la raíz)
+├── web/index.html         ← copia de la misma web (editar las dos o sincronizar)
 ├── version.sh             ← generador de versión (ver §1)
 ├── build-dankotv.sh       ← builder .deb + AppImage de Danko TV (ver §3)
 ├── build-appimage.sh      ← builder legacy del motor 1.x
@@ -91,7 +104,8 @@ Dankoiptv/
 
 ### Config del usuario
 - Shell Danko TV: `~/.config/dankotv/` (lists.json, settings.json)
-  - settings: `skin`, `font_family`, `last_list`, `last_group`, `cache_secs` (default 45)
+  - settings: `skin`, `font_family`, `last_list`, `last_group`, `cache_secs` (default 45),
+    `favorites` (`{nombre_lista: [urls]}`)
 - Motor 1.x: `~/.config/dankoiptv/`
 
 ---
@@ -103,8 +117,9 @@ Dankoiptv/
 ./version.sh                # versión actual del shell (0.x) — ./version.sh dankoiptv = 1.1g
 python3 -m py_compile dankotv/*.py   # validar sintaxis antes de build (HACERLO SIEMPRE)
 ```
-- Salidas: `../dankotv_<ver>_all.deb` (52K, depende del paquete `dankoiptv` + python3-pyqt6 +
-  libmpv2 + mpv) y `dankotv-<ver>-x86_64.AppImage` (864K, autocontenido: motor + shell +
+- Salidas: `.deb` en la raíz del repo (`dankotv_<ver>_all.deb` + symlink `dankotv_all.deb`)
+  y copia en `../dankotv_<ver>_all.deb`. El .deb depende del paquete `dankoiptv` + python3-pyqt6 +
+  libmpv2 + mpv. AppImage: `dankotv-<ver>-x86_64.AppImage` (autocontenido: motor + shell +
   traducciones + iconos). Symlink `dankotv-x86_64.AppImage` → último build.
 - `dankotv/VERSION.txt` se actualiza en cada build (es un artefacto, no editar a mano).
 - Probar desde fuente sin build: `python3 dankotv/app.py` (necesita deps PyQt6/requests/
@@ -134,6 +149,10 @@ cada 18-30s y mandan PTS de audio hacia atrás).
 | `keep_open=yes` + `keep_open_pause=no` | ✅ | al EOF congela en último frame (cero negro) |
 | `loop_playlist="no"` + manejo propio del EOF | ✅ | loop sin control causaba cascadas |
 | `cache_secs=45` (configurable) | ⚠️ útil | absorbe micro-cortes de red, NO cortes de origen |
+
+Retraso de ~1–3 min respecto a la TV de aire/cable: casi siempre es el live edge del
+proveedor (transcodificador Xtream / ventana HLS). Nuestro cache (45 s) no explica 3 min.
+No se puede "adelantar" un `.ts` Xtream más allá de lo que el servidor está emitiendo.
 
 ### Algoritmo seamless vigente (implementado en `dankotv/player.py`)
 1. Observador de propiedad `eof-reached` (con keep-open, `end-file` ya NO se dispara en EOF)
@@ -254,8 +273,8 @@ git clone --depth 1 https://github.com/Fredolx/open-tv.git /tmp/opencode/open-tv
 
 ## 9. Roadmap (lo acordado)
 
-- **0.1 (actual)**: shell nuevo funcional + motor seamless + skins + video maximizado +
-  fix del cartel de carga (pendiente de validación del usuario).
+- **0.1 (actual)**: shell nuevo funcional + motor seamless + skins + pantalla completa
+  estilo Yuki + fix del cartel de carga (pendiente de validación del usuario).
 - **0.2+**: migrar a mpv externo + IPC JSON (mismo wid, mismos observers, crash-aislado);
   grabación en el shell (ffmpeg con -reconnect*); EPG + catchup en el shell; gestión de
   límite de conexiones simultáneas (idea de open-tv handle_max_streams); telemetría de
