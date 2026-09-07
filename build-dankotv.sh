@@ -49,7 +49,9 @@ Description: Danko TV - reproductor IPTV con reconexión seamless
 EOF
 DEB="../dankotv_${VER}_all.deb"
 fakeroot dpkg-deb --build "$PKGDIR" "$DEB" 2>/dev/null || dpkg-deb --build "$PKGDIR" "$DEB"
-echo "DEB: $DEB ($(du -h "$DEB" | cut -f1))"
+cp -f "$DEB" "./dankotv_${VER}_all.deb"
+ln -sf "dankotv_${VER}_all.deb" dankotv_all.deb
+echo "DEB: $DEB y ./dankotv_${VER}_all.deb ($(du -h "$DEB" | cut -f1))"
 
 # ---------- AppImage (autocontenido: shell + motor + assets) ----------
 APPDIR="build/dankotv-AppDir"

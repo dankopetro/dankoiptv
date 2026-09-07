@@ -13,6 +13,7 @@ DEFAULT_SETTINGS = {
     "last_list": "",
     "last_group": "Todas",
     "cache_secs": 45,
+    "favorites": {},
 }
 
 
@@ -67,12 +68,54 @@ def save_lists(items):
         pass
 
 
-def upsert_list(entry):
-    items = [e for e in load_lists() if e.get("name") != entry.get("name")]
+def upsert_list(entry, old_name=None):
+    items = load_lists()
+    drop = old_name or entry.get("name")
+    items = [e for e in items if e.get("name") != drop]
     entry["updated"] = time.strftime("%Y-%m-%d %H:%M")
     items.insert(0, entry)
     save_lists(items)
+    if old_name and old_name != entry.get("name"):
+        rename_favorites(old_name, entry.get("name"))
 
 
 def delete_list(name):
     save_lists([e for e in load_lists() if e.get("name") != name])
+    favs = dict(load_settings().get("favorites") or {})
+    if name in favs:
+        del favs[name]
+        save_settings({"favorites": favs})
+
+
+def favorites_for(list_name):
+    favs = load_settings().get("favorites") or {}
+    return list(favs.get(list_name) or [])
+
+
+def set_favorites(list_name, urls):
+    favs = dict(load_settings().get("favorites") or {})
+    favs[list_name] = list(urls)
+    save_settings({"favorites": favs})
+
+
+def rename_favorites(old_name, new_name):
+    if not old_name or not new_name or old_name == new_name:
+        return
+    favs = dict(load_settings().get("favorites") or {})
+    if old_name in favs:
+        favs[new_name] = favs.pop(old_name)
+        save_settings({"favorites": favs})
+
+
+def toggle_favorite(list_name, url):
+    if not list_name or not url:
+        return False
+    cur = favorites_for(list_name)
+    if url in cur:
+        cur = [u for u in cur if u != url]
+        on = False
+    else:
+        cur.append(url)
+        on = True
+    set_favorites(list_name, cur)
+    return on

@@ -48,11 +48,12 @@ def load_spec(spec, parent, on_done):
 
 
 class NewListDialog(QDialog):
-    """Nueva lista: nombre + URL M3U o credenciales Xtream + probar."""
+    """Nueva o editar lista: nombre + URL M3U o credenciales Xtream."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, entry=None):
         super().__init__(parent)
-        self.setWindowTitle("Nueva lista")
+        self._old_name = (entry or {}).get("name") if entry else None
+        self.setWindowTitle("Editar lista" if entry else "Nueva lista")
         self.resize(480, 340)
         lay = QVBoxLayout(self)
         form = QFormLayout()
@@ -83,6 +84,17 @@ class NewListDialog(QDialog):
         xl.addRow("Clave:", self.pass_edit)
         self.tabs.addTab(xt_w, "Xtream")
         lay.addWidget(self.tabs)
+
+        if entry:
+            self.name_edit.setText(entry.get("name", ""))
+            if entry.get("type") == "xtream":
+                self.tabs.setCurrentIndex(1)
+                self.host_edit.setText(entry.get("host", ""))
+                self.user_edit.setText(entry.get("user", ""))
+                self.pass_edit.setText(entry.get("pass", ""))
+            else:
+                self.tabs.setCurrentIndex(0)
+                self.url_edit.setText(entry.get("url", ""))
 
         self.status = QLabel("")
         self.status.setObjectName("muted")
@@ -148,7 +160,7 @@ class NewListDialog(QDialog):
     def accept(self):
         spec, err = self.spec()
         if err:
-            QMessageBox.warning(self, "Nueva lista", err)
+            QMessageBox.warning(self, self.windowTitle(), err)
             return
         self._spec = spec
         super().accept()
@@ -198,12 +210,18 @@ class HomeWindow(QMainWindow):
         self.add_btn = QPushButton("＋ Nueva lista")
         self.add_btn.clicked.connect(self.add_list)
         row.addWidget(self.add_btn)
+        self.edit_btn = QPushButton("Editar")
+        self.edit_btn.clicked.connect(self.edit_selected)
+        row.addWidget(self.edit_btn)
         self.open_btn = QPushButton("Abrir ▶")
         self.open_btn.clicked.connect(self._open_selected)
         row.addWidget(self.open_btn)
         self.del_btn = QPushButton("Eliminar")
         self.del_btn.clicked.connect(self.delete_selected)
         row.addWidget(self.del_btn)
+        self.quit_btn = QPushButton("Salir")
+        self.quit_btn.clicked.connect(self._quit)
+        row.addWidget(self.quit_btn)
         row.addStretch()
         lay.addLayout(row)
         self.refresh()
@@ -220,6 +238,33 @@ class HomeWindow(QMainWindow):
         dlg = NewListDialog(self)
         if dlg.exec():
             self.load_and_store(dlg._spec)
+
+    def edit_selected(self):
+        item = self.list_widget.currentItem()
+        if not item:
+            return
+        entry = item.data(Qt.ItemDataRole.UserRole)
+        dlg = NewListDialog(self, entry)
+        if not dlg.exec():
+            return
+        spec = dlg._spec
+        old = dlg._old_name
+        conn_keys = ("type", "url", "host", "user", "pass")
+        conn_changed = any(spec.get(k) != entry.get(k) for k in conn_keys)
+        merged = dict(entry)
+        merged.update(spec)
+        cfg.upsert_list(merged, old_name=old)
+        cache = getattr(self, "_session_cache", {})
+        if old and old != spec["name"] and old in cache:
+            cache[spec["name"]] = cache.pop(old)
+        self.refresh()
+        if conn_changed:
+            self.load_and_store(spec)
+
+    def _quit(self):
+        from PyQt6.QtWidgets import QApplication
+
+        QApplication.instance().quit()
 
     def load_and_store(self, spec):
         box = QMessageBox(self)
