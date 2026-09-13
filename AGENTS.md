@@ -274,6 +274,10 @@ git clone --depth 1 https://github.com/Fredolx/open-tv.git /tmp/opencode/open-tv
 7. NUNCA aceptar commits con trailers `Co-authored-by:` de herramientas/IA: GitHub los
    cuenta como contributors del repo y no hay botón para quitarlos (solo reescribir
    historial + force-push). El autor del commit debe ser siempre el usuario.
+8. Identidad git: `user.name "Danko Petro"` + `user.email "87874066+dankopetro@users.
+   noreply.github.com"` (dirección privada de GitHub: vincula commits a @dankopetro sin
+   exponer email real). NUNCA usar emails @local/@example.com: GitHub no puede
+   verificarlos y esos commits quedan huérfanos (sin avatar ni actividad).
 
 ---
 
