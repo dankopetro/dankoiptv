@@ -271,6 +271,9 @@ git clone --depth 1 https://github.com/Fredolx/open-tv.git /tmp/opencode/open-tv
 5. Tras cada fix funcional verificado, commit con mensaje estilo git log existente.
 6. Ante cambios de comportamiento de reproducción, actualizar AGENTS.md (este archivo) —
    es la memoria del proyecto para futuras sesiones/IA.
+7. NUNCA aceptar commits con trailers `Co-authored-by:` de herramientas/IA: GitHub los
+   cuenta como contributors del repo y no hay botón para quitarlos (solo reescribir
+   historial + force-push). El autor del commit debe ser siempre el usuario.
 
 ---
 
