@@ -10,16 +10,16 @@ propios durante el desarrollo. NO repetir errores ya probados.
 
 ## 0. Estado ACTUAL del proyecto
 
-- **Danko TV 0.2** (`0.2-20261002-2124`): shell nuevo PyQt6 funcional, en pruebas del usuario
+- **Danko TV 0.2** (`0.2-20261002-2142`): shell nuevo PyQt6 funcional, en pruebas del usuario
   (ventana "Mis listas" verificada en captura 02/10/2026). Novedad: buscador de
-  categorías (combo de grupos editable con completer).
+  categorías (cajita visible estilo Android que filtra el desplegable de grupos).
 - **GitHub**: `https://github.com/dankopetro/dankoiptv.git` (rama `main`). Push solo cuando
   el usuario lo pida. Release **Danko TV 0.105** (`v0.105`, 02/10/2026) con .deb +
   AppImage del build 2124 adjuntos. El sitio Vercel sirve el `index.html` de la **raíz** del repo:
   no moverlo ni reemplazarlo por otra app; hay una copia de trabajo en `web/index.html`.
 - **Últimos builds válidos** (en la raíz del repo, generados por `./build-dankotv.sh`):
-  - `0.2-20261002-2124` (.deb + AppImage) ← **el que el usuario está probando**
-    (buscador de categorías; EPG aún pendiente)
+  - `0.2-20261002-2142` (.deb + AppImage) ← **el que el usuario está probando**
+    (buscador de categorías visible estilo Android; EPG aún pendiente)
   - Anteriores: `0.1-20260906-2108` (solo .deb, probado antes), `0.1-20260907-1252`
   - Symlinks estables: `./dankotv-x86_64.AppImage` / `./dankotv_all.deb` → siempre
     apuntan al último build (hoy: 2124)

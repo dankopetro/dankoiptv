@@ -6,7 +6,6 @@ from PyQt6.QtGui import QAction, QActionGroup, QCursor, QGuiApplication, QKeySeq
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QListWidget,
     QLineEdit, QPushButton, QLabel, QSplitter, QFrame, QComboBox,
-    QCompleter,
     QStatusBar, QMenuBar, QListWidgetItem, QMessageBox, QSlider,
     QMenu, QApplication,
 )
@@ -151,15 +150,11 @@ class MainWindow(QMainWindow):
         self.search.setPlaceholderText("🔎 Buscar canal...")
         self.search.textChanged.connect(self.filter_channels)
         sl.addWidget(self.search)
+        self.group_search = QLineEdit()
+        self.group_search.setPlaceholderText("🔎 Buscar categoría...")
+        self.group_search.textChanged.connect(self.filter_groups)
+        sl.addWidget(self.group_search)
         self.group_combo = QComboBox()
-        self.group_combo.setEditable(True)
-        self.group_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        self.group_combo.lineEdit().setPlaceholderText("🔎 Buscar categoría...")
-        comp = QCompleter(self.group_combo.model(), self.group_combo)
-        comp.setFilterMode(Qt.MatchFlag.MatchContains)
-        comp.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        comp.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
-        self.group_combo.setCompleter(comp)
         self.group_combo.currentTextChanged.connect(self.filter_channels)
         sl.addWidget(self.group_combo)
         self.channel_list = QListWidget()
@@ -420,17 +415,27 @@ class MainWindow(QMainWindow):
 
     # --- canales ---
     def _set_groups(self, groups):
+        self._all_groups = list(groups or [])
+        self.filter_groups()
+
+    def filter_groups(self):
+        """La cajita filtra los ítems del desplegable (estilo Android)."""
+        q = self.group_search.text().lower().strip()
+        cur = self.group_combo.currentText()
         self.group_combo.blockSignals(True)
         self.group_combo.clear()
         self.group_combo.addItem("Todas")
         self.group_combo.addItem("★ Favoritos")
-        for g in groups:
-            self.group_combo.addItem(g)
-        saved = self._cfg.get("last_group", "Todas")
-        idx = self.group_combo.findText(saved)
+        for g in self._all_groups:
+            if not q or q in g.lower():
+                self.group_combo.addItem(g)
+        idx = self.group_combo.findText(cur)
+        if idx < 0:
+            idx = self.group_combo.findText(self._cfg.get("last_group", "Todas"))
         if idx >= 0:
             self.group_combo.setCurrentIndex(idx)
         self.group_combo.blockSignals(False)
+        self.filter_channels()
 
     def _fav_urls(self):
         return set(cfg.favorites_for(self.entry.get("name", "")))
