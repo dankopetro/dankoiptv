@@ -6,6 +6,7 @@ from PyQt6.QtGui import QAction, QActionGroup, QCursor, QGuiApplication, QKeySeq
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QListWidget,
     QLineEdit, QPushButton, QLabel, QSplitter, QFrame, QComboBox,
+    QCompleter,
     QStatusBar, QMenuBar, QListWidgetItem, QMessageBox, QSlider,
     QMenu, QApplication,
 )
@@ -151,6 +152,14 @@ class MainWindow(QMainWindow):
         self.search.textChanged.connect(self.filter_channels)
         sl.addWidget(self.search)
         self.group_combo = QComboBox()
+        self.group_combo.setEditable(True)
+        self.group_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.group_combo.lineEdit().setPlaceholderText("🔎 Buscar categoría...")
+        comp = QCompleter(self.group_combo.model(), self.group_combo)
+        comp.setFilterMode(Qt.MatchFlag.MatchContains)
+        comp.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        comp.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        self.group_combo.setCompleter(comp)
         self.group_combo.currentTextChanged.connect(self.filter_channels)
         sl.addWidget(self.group_combo)
         self.channel_list = QListWidget()
@@ -426,9 +435,16 @@ class MainWindow(QMainWindow):
     def _fav_urls(self):
         return set(cfg.favorites_for(self.entry.get("name", "")))
 
+    def _current_group(self):
+        """Grupo seleccionado, o "Todas" si el texto a medio escribir no coincide."""
+        t = self.group_combo.currentText()
+        if self.group_combo.findText(t) < 0:
+            return "Todas"
+        return t
+
     def filter_channels(self, *_):
         q = self.search.text().lower().strip()
-        grp = self.group_combo.currentText()
+        grp = self._current_group()
         out = self.channels
         favs = self._fav_urls()
         if grp == "★ Favoritos":
@@ -549,10 +565,10 @@ class MainWindow(QMainWindow):
 
     def showEvent(self, event):
         super().showEvent(event)
-        cfg.save_settings({"last_list": self.entry.get("name", ""), "last_group": self.group_combo.currentText()})
+        cfg.save_settings({"last_list": self.entry.get("name", ""), "last_group": self._current_group()})
 
     def closeEvent(self, event):
-        cfg.save_settings({"last_group": self.group_combo.currentText()})
+        cfg.save_settings({"last_group": self._current_group()})
         if self._fullscreen:
             try:
                 self._leave_fullscreen()

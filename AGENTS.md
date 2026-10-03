@@ -4,21 +4,25 @@
 fue verificado empíricamente (probado en vivo contra IPTV real) o aprendido por errores
 propios durante el desarrollo. NO repetir errores ya probados.
 
-Última actualización: 06/09/2026 (web Vercel en raíz + copia `web/`)
+Última actualización: 02/10/2026 (build 2108 en prueba; web Vercel en raíz + copia `web/`)
 
 ---
 
 ## 0. Estado ACTUAL del proyecto
 
-- **Danko TV 0.1** (`0.1-20260906-1914`): shell nuevo PyQt6 funcional, en pruebas del usuario.
+- **Danko TV 0.2** (`0.2-20261002-2124`): shell nuevo PyQt6 funcional, en pruebas del usuario
+  (ventana "Mis listas" verificada en captura 02/10/2026). Novedad: buscador de
+  categorías (combo de grupos editable con completer).
 - **GitHub**: `https://github.com/dankopetro/dankoiptv.git` (rama `main`). Push solo cuando
   el usuario lo pida. El sitio Vercel sirve el `index.html` de la **raíz** del repo:
   no moverlo ni reemplazarlo por otra app; hay una copia de trabajo en `web/index.html`.
 - **Últimos builds válidos** (en la raíz del repo, generados por `./build-dankotv.sh`):
-  - `dankotv-0.1-20260906-1914-x86_64.AppImage` (864K) ← **el bueno para probar**
-  - `../dankotv_0.1-20260906-1914_all.deb` (52K)
-  - Symlink estable: `./dankotv-x86_64.AppImage` → siempre apunta al último build
-- **Pendiente de prueba por el usuario** (build 1914): que el cartel "Cargando lista..."
+  - `0.2-20261002-2124` (.deb + AppImage) ← **el que el usuario está probando**
+    (buscador de categorías; EPG aún pendiente)
+  - Anteriores: `0.1-20260906-2108` (solo .deb, probado antes), `0.1-20260907-1252`
+  - Symlinks estables: `./dankotv-x86_64.AppImage` / `./dankotv_all.deb` → siempre
+    apuntan al último build (hoy: 2124)
+- **Pendiente de prueba por el usuario** (build 2108): que el cartel "Cargando lista..."
   se cierre solo al terminar la descarga (ver §6.2 para el detalle del bug corregido).
 
 ### Qué es cada cosa (tres superficies en el mismo repo)
