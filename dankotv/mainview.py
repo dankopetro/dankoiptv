@@ -449,15 +449,17 @@ class MainWindow(QMainWindow):
 
     def filter_channels(self, *_):
         q = self.search.text().lower().strip()
-        grp = self._current_group()
         out = self.channels
         favs = self._fav_urls()
-        if grp == "★ Favoritos":
-            out = [c for c in out if c.get("url") in favs]
-        elif grp and grp != "Todas":
-            out = [c for c in out if c.get("group") == grp]
         if q:
+            # Búsqueda general: abarca TODOS los canales (ignora el grupo elegido)
             out = [c for c in out if q in c.get("title", "").lower()]
+        else:
+            grp = self._current_group()
+            if grp == "★ Favoritos":
+                out = [c for c in out if c.get("url") in favs]
+            elif grp and grp != "Todas":
+                out = [c for c in out if c.get("group") == grp]
         self.filtered = out
         self.channel_list.clear()
         for ch in out[:DISPLAY_LIMIT]:
