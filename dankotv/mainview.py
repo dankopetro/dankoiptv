@@ -351,8 +351,23 @@ class MainWindow(QMainWindow):
 
         def on_done(ok, ch, gr, err, epg=""):
             self.setEnabled(True)
-            if not ok:
-                QMessageBox.warning(self, "Recargar", f"Fallo al recargar.\n{err}")
+            if not ok or not ch:
+                from . import store as _store
+
+                sch, sgr, _saved = _store.load_snapshot(spec.get("name", ""))
+                if sch:
+                    self.channels = sch
+                    entry = dict(self.entry)
+                    entry["channels"] = len(sch)
+                    entry["groups"] = len(sgr)
+                    cfg.upsert_list(entry)
+                    self._set_groups(sgr)
+                    self.filter_channels()
+                    self.statusBar().showMessage(
+                        f"Recarga falló ({err}); mostrando copia guardada "
+                        f"({len(sch)} canales)", 8000)
+                else:
+                    QMessageBox.warning(self, "Recargar", f"Fallo al recargar.\n{err}")
                 return
             self.channels = ch
             entry = dict(self.entry)
@@ -363,7 +378,7 @@ class MainWindow(QMainWindow):
             cfg.upsert_list(entry)
             self._set_groups(gr)
             self.filter_channels()
-            self.statusBar().showMessage(f"Recargados {len(ch)} canales", 5000)
+            self.statusBar().showMessage(f"Recarga exitosa: {len(ch)} canales", 5000)
 
         bridge = _Bridge(on_done, self)
 
