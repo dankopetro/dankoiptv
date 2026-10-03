@@ -25,6 +25,8 @@ MENUS = {
     ],
     "Ver": [
         {"id": "guide", "label": "Guía de programación", "slot": "open_guide", "tip": "Grilla EPG con buscadores"},
+        {"id": "epg_plus", "label": "Hora EPG +1h", "slot": "epg_shift_more", "tip": "Adelantar horarios EPG de esta lista"},
+        {"id": "epg_minus", "label": "Hora EPG −1h", "slot": "epg_shift_less", "tip": "Atrasar horarios EPG de esta lista"},
         {"id": "fs2", "label": "Pantalla completa", "slot": "toggle_fullscreen"},
         {"id": "fav", "label": "Marcar favorito", "slot": "toggle_favorite"},
         {"id": "skin", "label": "Tema", "submenu": "skins"},

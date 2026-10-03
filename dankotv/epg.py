@@ -19,9 +19,34 @@ log = logging.getLogger("dankotv.epg")
 
 CACHE_TTL = 6 * 3600
 SHORT_LIMIT = 8
-# Los paneles Xtream etiquetan hora local como si fuera UTC: todo llega 3h
-# temprano (verificado en Android 19/09). Se corrige acá una sola vez.
-TZ_SHIFT = int(cfg.load_settings().get("epg_shift_hours", 3)) * 3600
+# Los paneles Xtream NO usan UTC uniforme: cada proveedor etiqueta sus
+# timestamps en su propia base (SuperXL: UTC → +3; Premium: UTC-5 → +5,
+# verificado 02/10/2026: Boca-Unión 19:30 mostrado vs 21:30 real).
+# El shift es POR LISTA: entry["epg_shift"] > mapa por host > default.
+DEFAULT_SHIFT = int(cfg.load_settings().get("epg_shift_hours", 3))
+SHIFT_BY_HOST = {
+    "iptvpremium.ink": 5,
+}
+
+
+def shift_for(entry):
+    try:
+        return int((entry or {}).get("epg_shift", ""))
+    except (TypeError, ValueError):
+        pass
+    host = ""
+    try:
+        if (entry or {}).get("type") == "xtream":
+            host = (entry.get("host") or "")
+        else:
+            creds = xtream_creds_from_m3u((entry or {}).get("url") or "")
+            host = creds[0] if creds else ""
+    except Exception:
+        pass
+    for h, s in SHIFT_BY_HOST.items():
+        if h in host:
+            return s
+    return DEFAULT_SHIFT
 
 
 def _cache_dir():
@@ -89,8 +114,8 @@ def _cache_put(key, obj):
         log.warning("epg caché escribir: %s", e)
 
 
-def fetch_short_epg(host, user, password, stream_id, limit=SHORT_LIMIT):
-    """Ahora/siguiente de un stream Xtream. Epoch UTC + shift -> epoch local."""
+def fetch_short_epg(host, user, password, stream_id, limit=SHORT_LIMIT, shift=DEFAULT_SHIFT):
+    """Ahora/siguiente de un stream Xtream. Epoch proveedor + shift -> local."""
     import requests
 
     out = []
@@ -103,8 +128,8 @@ def fetch_short_epg(host, user, password, stream_id, limit=SHORT_LIMIT):
         data = r.json() if r.ok else {}
         for it in data.get("epg_listings") or []:
             try:
-                start = int(it.get("start_timestamp")) + TZ_SHIFT
-                stop = int(it.get("stop_timestamp")) + TZ_SHIFT
+                start = int(it.get("start_timestamp")) + shift * 3600
+                stop = int(it.get("stop_timestamp")) + shift * 3600
             except (TypeError, ValueError):
                 continue
             out.append({
@@ -188,11 +213,12 @@ def channel_now_next(entry, channel):
         typ = (entry or {}).get("type", "m3u")
         url = channel.get("url") or ""
         progs = []
+        shift = shift_for(entry)
         if typ == "xtream":
             host, user, pw = entry.get("host", ""), entry.get("user", ""), entry.get("pass", "")
             sid = stream_id_from_url(url)
             if host and user and sid:
-                progs = _short_progs(host, user, pw, sid)
+                progs = _short_progs(host, user, pw, sid, shift)
         else:
             epg_url = (entry or {}).get("epg_url") or ""
             creds = xtream_creds_from_m3u((entry or {}).get("url") or "")
@@ -201,7 +227,7 @@ def channel_now_next(entry, channel):
                 host, user, pw = creds
                 sid = stream_id_from_url(url)
                 if sid:
-                    progs = _short_progs(host, user, pw, sid)
+                    progs = _short_progs(host, user, pw, sid, shift)
             elif epg_url:
                 arr = load_xmltv(epg_url)
                 gid = resolve_id(channel.get("tvg_id"), channel.get("title"), arr)
@@ -213,11 +239,11 @@ def channel_now_next(entry, channel):
         return None, None
 
 
-def _short_progs(host, user, pw, sid):
-    key = f"short:{host}:{sid}"
+def _short_progs(host, user, pw, sid, shift):
+    key = f"short2:{host}:{sid}:{shift}"
     progs = _cache_get(key)
     if progs is None:
-        progs = fetch_short_epg(host, user, pw, sid)
+        progs = fetch_short_epg(host, user, pw, sid, shift=shift)
         _cache_put(key, progs)
     return progs or []
 
@@ -234,6 +260,7 @@ def guide_rows(entry, channels, max_rows=60, max_scan=150, limit_per_channel=8):
     arr = None
     typ = (entry or {}).get("type", "m3u")
     epg_url = (entry or {}).get("epg_url") or ""
+    shift = shift_for(entry)
     creds = None
     if typ == "xtream":
         host, user, pw = entry.get("host", ""), entry.get("user", ""), entry.get("pass", "")
@@ -258,7 +285,7 @@ def guide_rows(entry, channels, max_rows=60, max_scan=150, limit_per_channel=8):
             sid = stream_id_from_url(ch.get("url") or "")
             if host and user and sid:
                 scanned += 1
-                progs = _short_progs(host, user, pw, sid)[:limit_per_channel]
+                progs = _short_progs(host, user, pw, sid, shift)[:limit_per_channel]
         if progs:
             rows.append((ch, progs))
     return rows

@@ -601,6 +601,30 @@ class MainWindow(QMainWindow):
         dlg = GuideWindow(self, self.entry, cands, on_pick=self._guide_pick)
         dlg.show()
 
+    def epg_shift_more(self):
+        self._epg_shift(1)
+
+    def epg_shift_less(self):
+        self._epg_shift(-1)
+
+    def _epg_shift(self, delta):
+        try:
+            from . import epg as epgmod
+
+            cur = epgmod.shift_for(self.entry)
+            new = max(-12, min(12, cur + delta))
+            self.entry["epg_shift"] = new
+            cfg.upsert_list(dict(self.entry))
+            try:
+                ch = self.filtered[self._playing_idx] if 0 <= self._playing_idx < len(self.filtered) else None
+            except Exception:
+                ch = None
+            if ch:
+                self._fetch_epg_strip(ch)
+            self.statusBar().showMessage(f"Horario EPG de esta lista: {'+' if new >= 0 else ''}{new}h", 5000)
+        except Exception:
+            pass
+
     def _guide_pick(self, ch):
         try:
             for i, c in enumerate(self.filtered):
