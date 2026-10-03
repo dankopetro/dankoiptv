@@ -46,6 +46,53 @@ def fetch_text(url, timeout=120):
     return resp.content.decode("utf-8-sig", errors="replace")
 
 
+def classify_error(err):
+    """Texto amable para fallos de descarga (no borrar nada: ver store.py)."""
+    s = str(err or "")
+    if "401" in s:
+        return "Credenciales rechazadas (401: cuenta incorrecta o dada de baja)."
+    if "403" in s or "429" in s:
+        return ("Servidor rechazó los pedidos (bloqueo temporal por demasiados "
+                "intentos). Esperá un rato antes de recargar.")
+    if "404" in s:
+        return ("Lista no encontrada (404: URL/cuenta caída o bloqueo temporal "
+                "del servidor). Probá más tarde.")
+    low = s.lower()
+    if "timeout" in low or "timed out" in low or "connection" in low:
+        return ("Sin respuesta del servidor (puede estar caído o bloqueando "
+                "temporalmente). Probá más tarde.")
+    return s
+
+
+def probe_m3u(url):
+    """Validación liviana: solo los primeros bytes (no descarga la lista)."""
+    import requests
+
+    r = requests.get(url, headers={"Range": "bytes=0-4095",
+                                   "User-Agent": "Mozilla/5.0"},
+                     timeout=(10, 20))
+    if r.status_code in (200, 206) and r.content:
+        if b"#EXTM3U" in r.content[:8192].upper():
+            return True, "OK: la URL responde (la descarga completa se hace al guardar)."
+        return True, "OK: el servidor responde (verificá que sea una lista M3U)."
+    raise RuntimeError(f"HTTP {r.status_code}")
+
+
+def probe_xtream(host, username, password):
+    """Validación liviana: solo auth (no descarga categorías ni streams)."""
+    import requests
+
+    r = requests.get(f"{host.rstrip('/')}/player_api.php?username={username}&password={password}",
+                     headers={"User-Agent": "Mozilla/5.0"}, timeout=(10, 20))
+    try:
+        data = r.json()
+    except Exception:
+        raise RuntimeError(f"HTTP {r.status_code}")
+    if isinstance(data, dict) and (data.get("user_info") or {}).get("auth") == 1:
+        return True, "OK: usuario válido (las listas se descargan al guardar)."
+    raise RuntimeError("HTTP 401 (credenciales rechazadas)")
+
+
 def norm_m3u(ch):
     return {
         "title": ch.get("title") or ch.get("orig_title") or "Sin nombre",

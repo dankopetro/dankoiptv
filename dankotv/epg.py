@@ -248,12 +248,12 @@ def _short_progs(host, user, pw, sid, shift):
     return progs or []
 
 
-def guide_rows(entry, channels, max_rows=60, max_scan=150, limit_per_channel=8):
+def guide_rows(entry, channels, max_rows=60, max_scan=40, limit_per_channel=8):
     """[(channel, programmes)] solo con datos.
 
-    Escanea por páginas con tope: cada canal sin caché cuesta 1 HTTP (~0.3s),
-    así que se corta en max_scan consultas o max_rows filas. Con caché en
-    disco las visitas siguientes son gratis. Llamar desde hilo worker.
+    Escanea por páginas con tope y pausa entre pedidos: los paneles Xtream
+    bloquean temporalmente ante martilleo (verificado 02/10/2026). Con caché
+    en disco las visitas siguientes son gratis. Llamar desde hilo worker.
     """
     rows = []
     scanned = 0
@@ -286,6 +286,7 @@ def guide_rows(entry, channels, max_rows=60, max_scan=150, limit_per_channel=8):
             if host and user and sid:
                 scanned += 1
                 progs = _short_progs(host, user, pw, sid, shift)[:limit_per_channel]
+                time.sleep(0.5)  # anti-bloqueo del proveedor
         if progs:
             rows.append((ch, progs))
     return rows

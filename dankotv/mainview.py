@@ -298,7 +298,8 @@ class MainWindow(QMainWindow):
 
                 ch, gr, _saved = _store.load_snapshot(spec.get("name", ""))
                 if not ch:
-                    QMessageBox.warning(self, "Error", f"No se pudo cargar la lista.\n{err}")
+                    QMessageBox.warning(self, "Error",
+                                        f"No se pudo cargar la lista.\n{engine.classify_error(err)}")
                     self.statusBar().showMessage("Sin lista — usa Listas > Nueva lista", 6000)
                     return
             entry = dict(spec)
@@ -367,7 +368,8 @@ class MainWindow(QMainWindow):
                         f"Recarga falló ({err}); mostrando copia guardada "
                         f"({len(sch)} canales)", 8000)
                 else:
-                    QMessageBox.warning(self, "Recargar", f"Fallo al recargar.\n{err}")
+                    QMessageBox.warning(self, "Recargar",
+                                        f"Fallo al recargar.\n{engine.classify_error(err)}")
                 return
             self.channels = ch
             entry = dict(self.entry)

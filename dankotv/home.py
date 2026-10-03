@@ -153,12 +153,12 @@ class NewListDialog(QDialog):
         def work():
             try:
                 if spec["type"] == "m3u":
-                    ch, _gr, _epg = engine.load_m3u(spec["url"])
+                    _ok, msg = engine.probe_m3u(spec["url"])
                 else:
-                    ch, _gr = engine.load_xtream(spec["host"], spec["user"], spec["pass"])
-                bridge.done.emit((True, f"OK: {len(ch)} canales encontrados."))
+                    _ok, msg = engine.probe_xtream(spec["host"], spec["user"], spec["pass"])
+                bridge.done.emit((True, msg))
             except Exception as e:
-                bridge.done.emit((False, f"Fallo: {e}"))
+                bridge.done.emit((False, f"Fallo: {engine.classify_error(e)}"))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -289,9 +289,11 @@ class HomeWindow(QMainWindow):
 
                 ch, gr, saved_at = _store.load_snapshot(spec.get("name", ""))
                 if not ch:
+                    from . import engine as _eng
+
                     msg = QMessageBox(self)
                     msg.setWindowTitle("Error")
-                    msg.setText(f"No se pudo cargar la lista.\n{err}")
+                    msg.setText(f"No se pudo cargar la lista.\n{_eng.classify_error(err)}")
                     msg.setStandardButtons(QMessageBox.StandardButton.Ok)
                     msg.show()
                     from PyQt6.QtCore import QTimer
@@ -322,6 +324,18 @@ class HomeWindow(QMainWindow):
             return
         entry = item.data(Qt.ItemDataRole.UserRole)
         if entry["name"] in getattr(self, "_session_cache", {}):
+            self.open_list.emit(entry)
+            return
+        # Abrir = copia guardada primero (0 pedidos al servidor). La descarga
+        # fresca es solo con Recargar explícito (anti-bloqueo del proveedor).
+        from . import store as _store
+
+        ch, gr, _saved = _store.load_snapshot(entry["name"])
+        if ch:
+            self._session_cache = getattr(self, "_session_cache", {})
+            self._session_cache[entry["name"]] = (ch, gr)
+            entry = dict(entry)
+            entry["_offline"] = "Copia guardada — Recargar para actualizar."
             self.open_list.emit(entry)
         else:
             # recargar canales de la lista guardada
