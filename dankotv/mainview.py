@@ -58,6 +58,7 @@ class MainWindow(QMainWindow):
         self._cfg = cfg.load_settings()
         self.player = None
         self._rec = None  # (proc, ts_path, mp4_path, title) o None
+        self._playing_live = True
         self._playing_idx = -1
         self._playing_url = ""
         self._playing_title = ""
@@ -277,7 +278,9 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Grabar", "Primero elegí un canal.")
             return
         try:
-            proc, ts_path, mp4_path = recmod.start(self._playing_url, self._playing_title or "canal")
+            proc, ts_path, mp4_path = recmod.start(
+                self._playing_url, self._playing_title or "canal",
+                live=self._playing_live)
             self._rec = (proc, ts_path, mp4_path, self._playing_title)
             self.statusBar().showMessage(f"⏺ Grabando {self._playing_title}... (⏺ para detener)", 10000)
         except Exception as e:
@@ -665,6 +668,7 @@ class MainWindow(QMainWindow):
             self._stop_rec_silent(notice=False)
             self.player.play(play, is_live=False)
             self._playing_url = play
+            self._playing_live = False
             self._playing_title = ch.get("title") or ""
             self.now_label.setText(f"⏪ {ch.get('title')} — {cur.get('title')}")
             self.epg_label.setText(f"Repetición desde las {epgmod.fmt_time(cur.get('start'))} · ⏺ para grabarla")
@@ -680,6 +684,7 @@ class MainWindow(QMainWindow):
         if self._rec and (ch.get("url") or "") != self._playing_url:
             self._stop_rec_silent(notice=True)
         self._playing_idx = row
+        self._playing_live = True
         self._playing_url = ch.get("url") or ""
         self._playing_title = ch.get("title") or ""
         if not self.player:

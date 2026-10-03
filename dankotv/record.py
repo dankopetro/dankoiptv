@@ -33,24 +33,33 @@ def _paths(title):
     return base + ".ts", base + ".mp4"
 
 
-def start(url, title):
-    """Inicia ffmpeg. Devuelve (proc, ts_path, mp4_path) o lanza RuntimeError."""
+def start(url, title, live=True):
+    """Inicia ffmpeg. live=True: ritmo 1:1 desde el borde (HLS no corre).
+    live=False (repetición/archivo): copia rápida del archivo completo.
+    Devuelve (proc, ts_path, mp4_path) o lanza RuntimeError."""
     if not ffmpeg_ok():
         raise RuntimeError("Falta ffmpeg (sudo apt install ffmpeg)")
     if not url:
         raise RuntimeError("Sin URL para grabar.")
     ts_path, mp4_path = _paths(title)
     cmd = ["ffmpeg", "-nostats", "-hide_banner", "-loglevel", "warning",
-           "-user_agent", "Mozilla/5.0",
-           "-reconnect", "1", "-reconnect_streamed", "1",
-           "-reconnect_on_network_error", "1",
-           "-i", url, "-map", "0", "-codec", "copy",
-           "-max_muxing_queue_size", "4096", "-y", ts_path]
+           "-user_agent", "Mozilla/5.0"]
+    if live:
+        # Sin esto ffmpeg devora la ventana HLS publicada más rápido que el
+        # vivo (10s pared -> 47s contenido, verificado 03/10/2026).
+        cmd += ["-re", "-live_start_index", "-1"]
+    cmd += ["-reconnect", "1", "-reconnect_streamed", "1",
+            "-reconnect_on_network_error", "1",
+            "-i", url, "-map", "0", "-codec", "copy",
+            "-max_muxing_queue_size", "4096", "-y", ts_path]
     log.info("REC start: %s", ts_path)
     proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(1.0)
     if proc.poll() is not None:
-        raise RuntimeError("ffmpeg no pudo abrir el stream (¿bloqueo temporal?).")
+        # Terminó en <1s: en modo archivo puede ser descarga completa válida;
+        # solo es fallo si no dejó nada.
+        if not (os.path.isfile(ts_path) and os.path.getsize(ts_path) > 0):
+            raise RuntimeError("ffmpeg no pudo abrir el stream (¿bloqueo temporal?).")
     return proc, ts_path, mp4_path
 
 

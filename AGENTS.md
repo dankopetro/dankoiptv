@@ -10,7 +10,7 @@ propios durante el desarrollo. NO repetir errores ya probados.
 
 ## 0. Estado ACTUAL del proyecto
 
-- **Danko TV 0.2** (`0.2-20261003-1402`, tag local `v1.1` sin pushear): shell nuevo PyQt6 funcional, en pruebas del usuario
+- **Danko TV 0.2** (`0.2-20261003-1419`, tag local `v1.1` sin pushear): shell nuevo PyQt6 funcional, en pruebas del usuario
   (ventana "Mis listas" verificada en captura 02/10/2026). Novedad: buscador de
   categorías (cajita visible estilo Android que filtra el desplegable de grupos);
   el buscador general abarca todos los canales aunque haya grupo elegido.
@@ -24,8 +24,10 @@ propios durante el desarrollo. NO repetir errores ya probados.
   AppImage del build 2244 adjuntos. El sitio Vercel sirve el `index.html` de la **raíz** del repo:
   no moverlo ni reemplazarlo por otra app; hay una copia de trabajo en `web/index.html`.
 - **Últimos builds válidos** (en la raíz del repo, generados por `./build-dankotv.sh`):
-  - `0.2-20261003-1402` (.deb + AppImage) ← **el que el usuario está probando**
+  - `0.2-20261003-1419` (.deb + AppImage) ← **el que el usuario está probando**
     (GRABACIÓN: ⏺/R ffmpeg copy a .ts + remux auto a .mp4 en ~/Videos/DankoTV;
+    vivo 1:1 con `-re -live_start_index -1` — sin eso ffmpeg devora la ventana
+    HLS (10s pared→47s contenido, verificado 03/10/2026); archivo = copia rápida;
     Ver > Desde el inicio por catchup si el proveedor lo trae — vivo puro NO
     rebobinable; EPG fase 1; buscadores; shift por lista; snapshot anti-vaciado;
     anti-bloqueo verificado 02/10/2026)
