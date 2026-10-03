@@ -20,8 +20,8 @@ propios durante el desarrollo. NO repetir errores ya probados.
   Snapshot SQLite (`dankotv/store.py`): última descarga exitosa por lista; si la
   recarga falla se muestra la copia guardada en vez de vaciar.
 - **GitHub**: `https://github.com/dankopetro/dankoiptv.git` (rama `main`). Push solo cuando
-  el usuario lo pida. Release **Danko TV 0.105** (`v0.105`, 02/10/2026) con .deb +
-  AppImage del build 2124 adjuntos. El sitio Vercel sirve el `index.html` de la **raíz** del repo:
+  el usuario lo pida. Release **Danko TV 1.1** (`v1.1`, 02/10/2026) con .deb +
+  AppImage del build 2244 adjuntos. El sitio Vercel sirve el `index.html` de la **raíz** del repo:
   no moverlo ni reemplazarlo por otra app; hay una copia de trabajo en `web/index.html`.
 - **Últimos builds válidos** (en la raíz del repo, generados por `./build-dankotv.sh`):
   - `0.2-20261002-2244` (.deb + AppImage) ← **el que el usuario está probando**
