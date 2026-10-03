@@ -644,7 +644,7 @@ class MainWindow(QMainWindow):
 
                 cur, _nxt = epgmod.channel_now_next(self.entry, ch)
                 if not cur:
-                    bridge.done.emit((None, "Sin dato de EPG para este canal."))
+                    bridge.done.emit((("ask", ch), ""))
                     return
                 play = epgmod.catchup_url(self.entry, ch, cur.get("start"), cur.get("stop"))
                 if not play:
@@ -656,7 +656,65 @@ class MainWindow(QMainWindow):
 
         threading.Thread(target=work, daemon=True).start()
 
+    def _from_start_manual(self, ch):
+        """Sin EPG: el usuario dice desde cuándo (el catchup solo pide fecha+hora)."""
+        import time as _time
+
+        from PyQt6.QtWidgets import QInputDialog
+
+        opts = ["Hace 30 minutos", "Hace 1 hora", "Hace 2 horas",
+                "Hace 3 horas", "Hora exacta (HH:MM de hoy)..."]
+        pick, ok = QInputDialog.getItem(
+            self, "Desde el inicio", "Sin dato de EPG. ¿Desde cuándo pedir la repetición?",
+            opts, 1, False)
+        if not ok:
+            self.statusBar().showMessage("Sin repetición disponible", 5000)
+            return
+        now = _time.time()
+        if pick.startswith("Hace 30"):
+            start = now - 1800
+        elif pick.startswith("Hace 1"):
+            start = now - 3600
+        elif pick.startswith("Hace 2"):
+            start = now - 7200
+        elif pick.startswith("Hace 3"):
+            start = now - 10800
+        else:
+            txt, ok = QInputDialog.getText(self, "Desde el inicio", "Hora de inicio (HH:MM):")
+            if not ok or not txt:
+                return
+            try:
+                hh, mm = txt.strip().split(":")
+                lt = _time.localtime(now)
+                start = _time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday,
+                                      int(hh), int(mm), 0, 0, 0, -1))
+                if start > now:
+                    start -= 86400
+            except Exception:
+                QMessageBox.warning(self, "Desde el inicio", "Hora inválida (usá HH:MM).")
+                return
+        self.statusBar().showMessage("Buscando repetición...", 10000)
+        bridge = _Bridge(self._on_from_start, self)
+
+        def work():
+            try:
+                from . import epg as epgmod
+
+                play = epgmod.catchup_url(self.entry, ch, int(start), int(now))
+                if not play:
+                    bridge.done.emit((None, "Este canal no ofrece repetición (sin catchup)."))
+                    return
+                cur = {"title": "repetición", "start": int(start), "stop": int(now)}
+                bridge.done.emit(((ch, cur, play), ""))
+            except Exception as e:
+                bridge.done.emit((None, str(e)))
+
+        threading.Thread(target=work, daemon=True).start()
+
     def _on_from_start(self, found, err):
+        if isinstance(found, tuple) and found and found[0] == "ask":
+            self._from_start_manual(found[1])
+            return
         if not found:
             QMessageBox.warning(self, "Desde el inicio", err or "Sin repetición.")
             self.statusBar().showMessage("Sin repetición disponible", 5000)
