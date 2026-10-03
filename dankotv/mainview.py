@@ -57,6 +57,7 @@ class MainWindow(QMainWindow):
         self._ver = version
         self._cfg = cfg.load_settings()
         self.player = None
+        self._rec = None  # (proc, ts_path, mp4_path, title) o None
         self._playing_idx = -1
         self._playing_url = ""
         self._playing_title = ""
@@ -251,7 +252,56 @@ class MainWindow(QMainWindow):
             self.on_select(item)
 
     def toggle_record(self):
-        self.statusBar().showMessage("Grabación: disponible en 0.2", 4000)
+        """⏺ / R: inicia o detiene la grabación (.ts + remux auto a .mp4)."""
+        try:
+            from . import record as recmod
+        except Exception as e:
+            QMessageBox.warning(self, "Grabar", f"No se pudo iniciar:\n{e}")
+            return
+        if self._rec:
+            proc, ts_path, mp4_path, title = self._rec
+            self._rec = None
+            self.statusBar().showMessage("Convirtiendo a MP4...", 10000)
+            bridge = _Bridge(self._on_rec_done, self)
+
+            def work():
+                try:
+                    final = recmod.stop(proc, ts_path, mp4_path)
+                    bridge.done.emit((final, ""))
+                except Exception as e:
+                    bridge.done.emit((None, str(e)))
+
+            threading.Thread(target=work, daemon=True).start()
+            return
+        if not self._playing_url:
+            QMessageBox.warning(self, "Grabar", "Primero elegí un canal.")
+            return
+        try:
+            proc, ts_path, mp4_path = recmod.start(self._playing_url, self._playing_title or "canal")
+            self._rec = (proc, ts_path, mp4_path, self._playing_title)
+            self.statusBar().showMessage(f"⏺ Grabando {self._playing_title}... (⏺ para detener)", 10000)
+        except Exception as e:
+            QMessageBox.warning(self, "Grabar", f"No se pudo grabar:\n{e}")
+
+    def _on_rec_done(self, final, err):
+        if final:
+            self.statusBar().showMessage(f"Grabado: {final}", 10000)
+        else:
+            QMessageBox.warning(self, "Grabar", f"Fallo al guardar:\n{err}")
+
+    def _stop_rec_silent(self, notice=True):
+        if not self._rec:
+            return
+        try:
+            from . import record as recmod
+
+            proc, ts_path, mp4_path, title = self._rec
+            self._rec = None
+            final = recmod.stop(proc, ts_path, mp4_path)
+            if notice:
+                self.statusBar().showMessage(f"Grabación detenida: {final}", 8000)
+        except Exception:
+            pass
 
     def screenshot(self):
         if self.player:
@@ -569,11 +619,66 @@ class MainWindow(QMainWindow):
         self.fav_btn.setText("★" if on else "☆")
         self.fav_btn.blockSignals(False)
 
+    def play_from_start(self):
+        """⏪ Reproduce el programa actual desde su inicio (catchup del proveedor)."""
+        ch = None
+        try:
+            for c in self.filtered:
+                if c.get("url") == self._playing_url:
+                    ch = c
+                    break
+        except Exception:
+            pass
+        if not ch:
+            QMessageBox.warning(self, "Desde el inicio", "Primero elegí un canal.")
+            return
+        self.statusBar().showMessage("Buscando repetición...", 10000)
+        bridge = _Bridge(self._on_from_start, self)
+
+        def work():
+            try:
+                from . import epg as epgmod
+
+                cur, _nxt = epgmod.channel_now_next(self.entry, ch)
+                if not cur:
+                    bridge.done.emit((None, "Sin dato de EPG para este canal."))
+                    return
+                play = epgmod.catchup_url(self.entry, ch, cur.get("start"), cur.get("stop"))
+                if not play:
+                    bridge.done.emit((None, "Este canal no ofrece repetición (sin catchup)."))
+                    return
+                bridge.done.emit(((ch, cur, play), ""))
+            except Exception as e:
+                bridge.done.emit((None, str(e)))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_from_start(self, found, err):
+        if not found:
+            QMessageBox.warning(self, "Desde el inicio", err or "Sin repetición.")
+            self.statusBar().showMessage("Sin repetición disponible", 5000)
+            return
+        ch, cur, play = found
+        try:
+            from . import epg as epgmod
+
+            self._stop_rec_silent(notice=False)
+            self.player.play(play, is_live=False)
+            self._playing_url = play
+            self._playing_title = ch.get("title") or ""
+            self.now_label.setText(f"⏪ {ch.get('title')} — {cur.get('title')}")
+            self.epg_label.setText(f"Repetición desde las {epgmod.fmt_time(cur.get('start'))} · ⏺ para grabarla")
+            self.statusBar().showMessage("Reproduciendo repetición (archivo, se puede grabar)", 8000)
+        except Exception as e:
+            QMessageBox.warning(self, "Desde el inicio", f"No se pudo reproducir:\n{e}")
+
     def on_select(self, item):
         row = self.channel_list.row(item)
         if row < 0 or row >= len(self.filtered):
             return
         ch = self.filtered[row]
+        if self._rec and (ch.get("url") or "") != self._playing_url:
+            self._stop_rec_silent(notice=True)
         self._playing_idx = row
         self._playing_url = ch.get("url") or ""
         self._playing_title = ch.get("title") or ""
@@ -692,6 +797,9 @@ class MainWindow(QMainWindow):
         if ev.key() == Qt.Key.Key_F and not ev.modifiers():
             self.toggle_favorite()
             return
+        if ev.key() == Qt.Key.Key_R and not ev.modifiers():
+            self.toggle_record()
+            return
         super().keyPressEvent(ev)
 
     def showEvent(self, event):
@@ -700,6 +808,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         cfg.save_settings({"last_group": self._current_group()})
+        self._stop_rec_silent(notice=False)
         if self._fullscreen:
             try:
                 self._leave_fullscreen()

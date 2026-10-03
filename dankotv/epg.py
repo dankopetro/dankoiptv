@@ -207,6 +207,57 @@ def fmt_time(ts):
         return ""
 
 
+def _url_ok(url):
+    """Probe liviano (primeros bytes): ¿el servidor entrega este archivo?"""
+    import requests
+
+    try:
+        r = requests.get(url, headers={"Range": "bytes=0-1023",
+                                       "User-Agent": "Mozilla/5.0"},
+                         timeout=(10, 15))
+        return r.status_code in (200, 206) and len(r.content) > 0
+    except Exception:
+        return False
+
+
+def _fmt_catchup_ts(ts):
+    return time.strftime("%d.%m.%Y %H:%M:%S", time.localtime(ts))
+
+
+def catchup_url(entry, channel, start_ts, end_ts):
+    """URL de repetición para un programa, o None si no hay catchup.
+
+    M3U: requiere catchup-source real (el parser marca 'default' a todo).
+    Xtream (nativo o híbrido get.php): URL timeshift + probe liviano.
+    """
+    try:
+        engine.ensure_engine_path()
+        from dankoiptv_lib.catchup import get_catchup_url
+
+        url = channel.get("url") or ""
+        src = (channel.get("catchup_source") or "").strip()
+        if src:
+            mode = (channel.get("catchup") or "default").strip() or "default"
+            play = get_catchup_url(url, {"catchup": mode, "catchup-source": src},
+                                   _fmt_catchup_ts(start_ts),
+                                   _fmt_catchup_ts(end_ts or (start_ts + 7200)), "")
+            return play if play and _url_ok(play) else None
+        creds = None
+        if (entry or {}).get("type") == "xtream":
+            creds = (entry.get("host", ""), entry.get("user", ""), entry.get("pass", ""))
+        else:
+            creds = xtream_creds_from_m3u((entry or {}).get("url") or "")
+        sid = stream_id_from_url(url)
+        if creds and creds[0] and creds[1] and sid:
+            play = get_catchup_url(url, {"catchup": "xc"},
+                                   _fmt_catchup_ts(start_ts),
+                                   _fmt_catchup_ts(end_ts or (start_ts + 7200)), "")
+            return play if play and _url_ok(play) else None
+    except Exception as e:
+        log.warning("catchup_url: %s", e)
+    return None
+
+
 def channel_now_next(entry, channel):
     """(actual, siguiente) para un canal de la lista activa. Nunca falla."""
     try:

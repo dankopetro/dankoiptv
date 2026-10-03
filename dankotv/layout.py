@@ -25,6 +25,7 @@ MENUS = {
     ],
     "Ver": [
         {"id": "guide", "label": "Guía de programación", "slot": "open_guide", "tip": "Grilla EPG con buscadores"},
+        {"id": "restart", "label": "Ver desde el inicio", "slot": "play_from_start", "tip": "Repetición del programa actual (si el proveedor tiene catchup)"},
         {"id": "epg_plus", "label": "Hora EPG +1h", "slot": "epg_shift_more", "tip": "Adelantar horarios EPG de esta lista"},
         {"id": "epg_minus", "label": "Hora EPG −1h", "slot": "epg_shift_less", "tip": "Atrasar horarios EPG de esta lista"},
         {"id": "fs2", "label": "Pantalla completa", "slot": "toggle_fullscreen"},

@@ -10,7 +10,7 @@ propios durante el desarrollo. NO repetir errores ya probados.
 
 ## 0. Estado ACTUAL del proyecto
 
-- **Danko TV 0.2** (`0.2-20261002-2244`, tag local `v1.1` sin pushear): shell nuevo PyQt6 funcional, en pruebas del usuario
+- **Danko TV 0.2** (`0.2-20261003-1402`, tag local `v1.1` sin pushear): shell nuevo PyQt6 funcional, en pruebas del usuario
   (ventana "Mis listas" verificada en captura 02/10/2026). Novedad: buscador de
   categorías (cajita visible estilo Android que filtra el desplegable de grupos);
   el buscador general abarca todos los canales aunque haya grupo elegido.
@@ -24,12 +24,12 @@ propios durante el desarrollo. NO repetir errores ya probados.
   AppImage del build 2244 adjuntos. El sitio Vercel sirve el `index.html` de la **raíz** del repo:
   no moverlo ni reemplazarlo por otra app; hay una copia de trabajo en `web/index.html`.
 - **Últimos builds válidos** (en la raíz del repo, generados por `./build-dankotv.sh`):
-  - `0.2-20261002-2244` (.deb + AppImage) ← **el que el usuario está probando**
-    (EPG fase 1: tira + guía; buscadores; shift por lista Premium +5/SuperXL +3;
-    snapshot SQLite anti-vaciado; ANTI-BLOQUEO: abrir usa copia sin pedir al
-    servidor, guía 40 consultas + pausa 0,5s, probe liviano, cartel 401/404/429.
-    Verificado 02/10/2026: pedir de más = el servidor anula la descarga.)
-  - Anteriores: `0.2-20261002-2234`, `0.2-20261002-2221`, `0.2-20261002-2158`, `0.2-20261002-2143`, `0.1-20260906-2108` (solo .deb), `0.1-20260907-1252`
+  - `0.2-20261003-1402` (.deb + AppImage) ← **el que el usuario está probando**
+    (GRABACIÓN: ⏺/R ffmpeg copy a .ts + remux auto a .mp4 en ~/Videos/DankoTV;
+    Ver > Desde el inicio por catchup si el proveedor lo trae — vivo puro NO
+    rebobinable; EPG fase 1; buscadores; shift por lista; snapshot anti-vaciado;
+    anti-bloqueo verificado 02/10/2026)
+  - Anteriores: `0.2-20261002-2244`, `0.2-20261002-2234`, `0.2-20261002-2221`, `0.2-20261002-2158`, `0.2-20261002-2143`, `0.1-20260906-2108` (solo .deb), `0.1-20260907-1252`
   - Symlinks estables: `./dankotv-x86_64.AppImage` / `./dankotv_all.deb` → siempre
     apuntan al último build (hoy: 2124)
 - **Pendiente de prueba por el usuario** (build 2108): que el cartel "Cargando lista..."

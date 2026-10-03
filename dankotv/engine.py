@@ -100,6 +100,8 @@ def norm_m3u(ch):
         "url": ch.get("url") or "",
         "logo": ch.get("tvg-logo") or "",
         "tvg_id": ch.get("tvg-ID") or ch.get("tvg-id") or "",
+        "catchup": ch.get("catchup") or "",
+        "catchup_source": ch.get("catchup-source") or "",
     }
 
 
