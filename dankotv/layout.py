@@ -24,6 +24,7 @@ MENUS = {
         {"id": "quit", "label": "Salir", "slot": "quit_app", "tip": "Cerrar Danko TV (Ctrl+Q)"},
     ],
     "Ver": [
+        {"id": "guide", "label": "Guía de programación", "slot": "open_guide", "tip": "Grilla EPG con buscadores"},
         {"id": "fs2", "label": "Pantalla completa", "slot": "toggle_fullscreen"},
         {"id": "fav", "label": "Marcar favorito", "slot": "toggle_favorite"},
         {"id": "skin", "label": "Tema", "submenu": "skins"},

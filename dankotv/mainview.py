@@ -176,6 +176,10 @@ class MainWindow(QMainWindow):
         self.now_label = QLabel("Sin reproducción")
         self.now_label.setObjectName("muted")
         rl.addWidget(self.now_label)
+        self.epg_label = QLabel("")
+        self.epg_label.setObjectName("muted")
+        self.epg_label.setWordWrap(True)
+        rl.addWidget(self.epg_label)
 
         self.toolbar = QWidget()
         bar = QHBoxLayout(self.toolbar)
@@ -284,7 +288,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Descargando '{spec['name']}'...")
         self.setEnabled(False)
 
-        def done(ok, ch, gr, err):
+        def done(ok, ch, gr, err, epg=""):
             self.setEnabled(True)
             if not ok or not ch:
                 QMessageBox.warning(self, "Error", f"No se pudo cargar la lista.\n{err}")
@@ -293,6 +297,8 @@ class MainWindow(QMainWindow):
             entry = dict(spec)
             entry["channels"] = len(ch)
             entry["groups"] = len(gr)
+            if epg:
+                entry["epg_url"] = epg
             cfg.upsert_list(entry)
             self.set_list(entry, ch, gr)
 
@@ -329,7 +335,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Recargando lista...")
         self.setEnabled(False)
 
-        def on_done(ok, ch, gr, err):
+        def on_done(ok, ch, gr, err, epg=""):
             self.setEnabled(True)
             if not ok:
                 QMessageBox.warning(self, "Recargar", f"Fallo al recargar.\n{err}")
@@ -338,6 +344,8 @@ class MainWindow(QMainWindow):
             entry = dict(self.entry)
             entry["channels"] = len(ch)
             entry["groups"] = len(gr)
+            if epg:
+                entry["epg_url"] = epg
             cfg.upsert_list(entry)
             self._set_groups(gr)
             self.filter_channels()
@@ -347,13 +355,14 @@ class MainWindow(QMainWindow):
 
         def work():
             try:
+                epg = ""
                 if spec["type"] == "m3u":
-                    ch, gr = engine.load_m3u(spec["url"])
+                    ch, gr, epg = engine.load_m3u(spec["url"])
                 else:
                     ch, gr = engine.load_xtream(spec["host"], spec["user"], spec["pass"])
-                bridge.done.emit((True, ch, gr, ""))
+                bridge.done.emit((True, ch, gr, "", epg))
             except Exception as e:
-                bridge.done.emit((False, [], [], str(e)))
+                bridge.done.emit((False, [], [], str(e), ""))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -542,11 +551,67 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Video", f"No se pudo iniciar mpv:\n{e}\nsudo apt install libmpv2 mpv")
                 return
         self.now_label.setText(f"▶ {ch.get('title')}  [{ch.get('group')}]")
+        self.epg_label.setText("")
         self._refresh_fav_btn()
         try:
             self.player.play(ch.get("url"), is_live=True)
         except Exception as e:
             QMessageBox.warning(self, "Video", f"Error: {e}")
+        self._fetch_epg_strip(ch)
+
+    def _fetch_epg_strip(self, ch):
+        """Tira Ahora/Siguiente en hilo (patrón _Bridge: UI siempre en hilo Qt)."""
+        url = ch.get("url") or ""
+        bridge = _Bridge(self._on_epg_strip, self)
+
+        def work():
+            try:
+                from . import epg as epgmod
+
+                cur, nxt = epgmod.channel_now_next(self.entry, ch)
+                bridge.done.emit((url, cur, nxt))
+            except Exception:
+                bridge.done.emit((url, None, None))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_epg_strip(self, url, cur, nxt):
+        if url != self._playing_url:
+            return  # el usuario ya cambió de canal
+        try:
+            from . import epg as epgmod
+
+            parts = []
+            if cur:
+                parts.append(f"AHORA {cur.get('title')} ({epgmod.fmt_time(cur.get('start'))})")
+            if nxt:
+                parts.append(f"→ {nxt.get('title')} {epgmod.fmt_time(nxt.get('start'))}")
+            self.epg_label.setText(" · ".join(parts))
+        except Exception:
+            pass
+
+    def open_guide(self):
+        """Grilla completa de programación (Fase 1: tira + guía con buscadores)."""
+        try:
+            from .guide import GuideWindow
+        except Exception as e:
+            QMessageBox.warning(self, "Guía", f"No se pudo abrir la guía:\n{e}")
+            return
+        cands = list(self.filtered) if getattr(self, "filtered", None) else list(self.channels or [])[:400]
+        dlg = GuideWindow(self, self.entry, cands, on_pick=self._guide_pick)
+        dlg.show()
+
+    def _guide_pick(self, ch):
+        try:
+            for i, c in enumerate(self.filtered):
+                if c.get("url") == ch.get("url"):
+                    item = self.channel_list.item(i)
+                    if item:
+                        self.channel_list.setCurrentItem(item)
+                        self.on_select(item)
+                        return
+        except Exception:
+            pass
 
     def _on_volume(self, v):
         if self.player:

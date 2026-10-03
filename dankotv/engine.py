@@ -52,6 +52,7 @@ def norm_m3u(ch):
         "group": ch.get("tvg-group") or "General",
         "url": ch.get("url") or "",
         "logo": ch.get("tvg-logo") or "",
+        "tvg_id": ch.get("tvg-ID") or ch.get("tvg-id") or "",
     }
 
 
@@ -66,9 +67,12 @@ def load_m3u(url, progress=None):
     parser = M3UParser(udp_proxy="")
     parsed = parser.parse_m3u(text)
     raw = parsed[0] if isinstance(parsed, (list, tuple)) else parsed
+    epg_url = ""
+    if isinstance(parsed, (list, tuple)) and len(parsed) > 1 and parsed[1]:
+        epg_url = str(parsed[1]).split(",")[0].strip()
     channels = [norm_m3u(c) for c in raw if isinstance(c, dict) and c.get("url")]
     groups = sorted({c["group"] for c in channels if c["group"]})
-    return channels, groups
+    return channels, groups, epg_url
 
 
 def load_xtream(host, username, password, progress=None):
@@ -98,6 +102,7 @@ def load_xtream(host, username, password, progress=None):
                 "group": getattr(ch, "group_title", "") or "General",
                 "url": url,
                 "logo": getattr(ch, "logo", "") or "",
+                "tvg_id": "",
             }
         )
     groups = sorted({c["group"] for c in channels if c["group"]})
