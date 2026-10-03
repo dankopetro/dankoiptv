@@ -36,13 +36,18 @@ def load_spec(spec, parent, on_done):
 
     def work():
         try:
+            epg = ""
             if spec["type"] == "m3u":
-                ch, gr = engine.load_m3u(spec["url"])
+                ch, gr, epg = engine.load_m3u(spec["url"])
             else:
                 ch, gr = engine.load_xtream(spec["host"], spec["user"], spec["pass"])
-            bridge.done.emit((True, ch, gr, ""))
+            if ch:
+                from . import store as _store
+
+                _store.save_snapshot(spec.get("name", ""), ch)
+            bridge.done.emit((True, ch, gr, "", epg))
         except Exception as e:
-            bridge.done.emit((False, [], [], str(e)))
+            bridge.done.emit((False, [], [], str(e), ""))
 
     threading.Thread(target=work, daemon=True).start()
 
@@ -148,7 +153,7 @@ class NewListDialog(QDialog):
         def work():
             try:
                 if spec["type"] == "m3u":
-                    ch, _gr = engine.load_m3u(spec["url"])
+                    ch, _gr, _epg = engine.load_m3u(spec["url"])
                 else:
                     ch, _gr = engine.load_xtream(spec["host"], spec["user"], spec["pass"])
                 bridge.done.emit((True, f"OK: {len(ch)} canales encontrados."))
@@ -273,22 +278,36 @@ class HomeWindow(QMainWindow):
         box.setStandardButtons(QMessageBox.StandardButton.NoButton)
         box.show()
 
-        def done(ok, ch, gr, err):
+        def done(ok, ch, gr, err, epg=""):
             box.close()
             box.deleteLater()
+            offline = False
             if not ok or not ch:
-                msg = QMessageBox(self)
-                msg.setWindowTitle("Error")
-                msg.setText(f"No se pudo cargar la lista.\n{err}")
-                msg.setStandardButtons(QMessageBox.StandardButton.Ok)
-                msg.show()
-                from PyQt6.QtCore import QTimer
-                QTimer.singleShot(5000, msg.close)
-                return
+                # Fallo de descarga: última copia guardada antes que nada
+                from . import store as _store
+                import time as _time
+
+                ch, gr, saved_at = _store.load_snapshot(spec.get("name", ""))
+                if not ch:
+                    msg = QMessageBox(self)
+                    msg.setWindowTitle("Error")
+                    msg.setText(f"No se pudo cargar la lista.\n{err}")
+                    msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+                    msg.show()
+                    from PyQt6.QtCore import QTimer
+                    QTimer.singleShot(5000, msg.close)
+                    return
+                offline = True
+                when = _time.strftime("%d/%m %H:%M", _time.localtime(saved_at)) if saved_at else "?"
+                err = f"Sin conexión: mostrando copia guardada ({when})."
             entry = dict(spec)
             entry["channels"] = len(ch)
             entry["groups"] = len(gr)
+            if epg:
+                entry["epg_url"] = epg
             cfg.upsert_list(entry)
+            if offline:
+                entry["_offline"] = err  # solo en memoria, no se guarda
             # cache en memoria de la sesión (canales completos)
             self._session_cache = getattr(self, "_session_cache", {})
             self._session_cache[entry["name"]] = (ch, gr)
@@ -315,4 +334,10 @@ class HomeWindow(QMainWindow):
         entry = item.data(Qt.ItemDataRole.UserRole)
         if QMessageBox.question(self, "Eliminar", f"¿Eliminar '{entry['name']}'?") == QMessageBox.StandardButton.Yes:
             cfg.delete_list(entry["name"])
+            try:
+                from . import store as _store
+
+                _store.drop_snapshot(entry["name"])
+            except Exception:
+                pass
             self.refresh()

@@ -102,7 +102,10 @@ class MainWindow(QMainWindow):
         self._set_groups(groups or [])
         self.filter_channels()
         if self.channels:
-            self.statusBar().showMessage(f"Lista '{name}': {len(self.channels)} canales", 5000)
+            note = f"Lista '{name}': {len(self.channels)} canales"
+            if self.entry.get("_offline"):
+                note += f" — {self.entry.get('_offline')}"
+            self.statusBar().showMessage(note, 8000)
         self._refresh_fav_btn()
 
     # --- UI construida desde layout.py ---
@@ -291,9 +294,13 @@ class MainWindow(QMainWindow):
         def done(ok, ch, gr, err, epg=""):
             self.setEnabled(True)
             if not ok or not ch:
-                QMessageBox.warning(self, "Error", f"No se pudo cargar la lista.\n{err}")
-                self.statusBar().showMessage("Sin lista — usa Listas > Nueva lista", 6000)
-                return
+                from . import store as _store
+
+                ch, gr, _saved = _store.load_snapshot(spec.get("name", ""))
+                if not ch:
+                    QMessageBox.warning(self, "Error", f"No se pudo cargar la lista.\n{err}")
+                    self.statusBar().showMessage("Sin lista — usa Listas > Nueva lista", 6000)
+                    return
             entry = dict(spec)
             entry["channels"] = len(ch)
             entry["groups"] = len(gr)
@@ -318,6 +325,13 @@ class MainWindow(QMainWindow):
         merged = dict(self.entry)
         merged.update(spec)
         cfg.upsert_list(merged, old_name=old)
+        if old and old != merged.get("name"):
+            try:
+                from . import store as _store
+
+                _store.rename_snapshot(old, merged.get("name"))
+            except Exception:
+                pass
         self.entry = merged
         self.setWindowTitle(f"Danko TV {self._ver} — {merged.get('name')}")
         self.statusBar().showMessage(f"Lista '{merged.get('name')}' actualizada", 4000)
@@ -360,6 +374,10 @@ class MainWindow(QMainWindow):
                     ch, gr, epg = engine.load_m3u(spec["url"])
                 else:
                     ch, gr = engine.load_xtream(spec["host"], spec["user"], spec["pass"])
+                if ch:
+                    from . import store as _store
+
+                    _store.save_snapshot(spec.get("name", ""), ch)
                 bridge.done.emit((True, ch, gr, "", epg))
             except Exception as e:
                 bridge.done.emit((False, [], [], str(e), ""))
