@@ -7,7 +7,8 @@ Reproductor IPTV propio para Linux (Mint 22.3+) con reconexión seamless
 
 1. **Danko TV** (`dankotv/`, versión 0.x): la app de escritorio — shell PyQt6
    modular con video libmpv embebido, pantalla Mis listas, pantalla completa,
-   favoritos, menús contextuales. Reutiliza el motor base.
+   favoritos, menús contextuales, menú **Opciones** (tema, fuente, carpeta de
+   grabaciones, exportar listas). Reutiliza el motor base.
 2. **Motor Dankoiptv** (`usr/lib/dankoiptv/`, versión 1.1g): librería y app
    completa con EPG, grabación, catchup, editor de listas, multi-EPG, MPRIS,
    i18n. El shell lo usa (M3UParser, XTream, binding mpv).
@@ -18,6 +19,11 @@ Reproductor IPTV propio para Linux (Mint 22.3+) con reconexión seamless
 ## Características
 - **Motor seamless**: keep-open + observador `eof-reached` + backoff en
   cascada para live (congela en el último frame en vez de negro).
+- **Grabación** (⏺ / R): copia del stream a `.ts` + remux automático a `.mp4`
+  en `~/Videos/DankoTV` (o la carpeta que elijas en Opciones). Log de
+  diagnóstico en `~/.config/dankotv/record.log`.
+- **Opciones**: tema, fuente, carpeta de grabaciones y exportar listas
+  (listas + canales + favoritos a una carpeta).
 - **12 skins** naranjas/dark + fuentes (Ubuntu/Noto/Inter/Cantarell/DejaVu).
 - **Pantalla completa**: doble clic, botón ⛶, F11 o Esc.
 - **Favoritos** por lista, búsqueda y filtro por grupo.
@@ -25,18 +31,20 @@ Reproductor IPTV propio para Linux (Mint 22.3+) con reconexión seamless
 
 ## Instalación (laptop con Mint 22.3+)
 ```bash
-sudo apt install ./dankotv_0.1-<fecha>_all.deb
+sudo apt install ./dankotv_<ver>_all.deb
 # o la AppImage (autocontenida):
-./dankotv-0.1-<fecha>-x86_64.AppImage
+./dankotv-<ver>-x86_64.AppImage
 # deps del sistema: python3-pyqt6 python3-requests libmpv2 mpv
 ```
 El `.deb` es autocontenido (incluye el motor); no necesita otro paquete.
 La AppImage también es autocontenida y no necesita instalación.
+Última release: **v1.2** (grabación .ts arreglada + menú Opciones).
 
 ## Build (desarrolladores)
 ```bash
 ./build-dankotv.sh          # .deb + AppImage, versión auto por fecha (./version.sh)
 python3 -m py_compile dankotv/*.py   # validar antes de build
+python3 -m unittest discover -s tests  # tests (grabación incluida; pide red)
 python3 dankotv/app.py      # probar desde fuente
 ```
 Detalle de arquitectura, lecciones empíricas y proceso: ver `AGENTS.md`.
