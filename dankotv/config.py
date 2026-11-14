@@ -14,6 +14,7 @@ DEFAULT_SETTINGS = {
     "last_group": "Todas",
     "cache_secs": 45,
     "favorites": {},
+    "rec_dir": "",  # Opciones > Carpeta de grabaciones… (vacío = ~/Videos/DankoTV)
 }
 
 

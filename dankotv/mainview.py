@@ -1,4 +1,5 @@
 """Vista principal Danko TV: video embebido + canales, layout declarativo."""
+import os
 import threading
 import time
 from PyQt6.QtCore import Qt, QEvent, QTimer, pyqtSignal
@@ -509,6 +510,46 @@ class MainWindow(QMainWindow):
 
     def about(self):
         QMessageBox.about(self, "Danko TV", f"<b>Danko TV {self._ver}</b><br>Reproductor IPTV con reconexión seamless.")
+
+    # --- Opciones > carpetas ---
+    def pick_rec_dir(self):
+        """Elige dónde guardar las grabaciones (Opciones > Carpeta…)."""
+        from PyQt6.QtWidgets import QFileDialog
+
+        cur = os.path.expanduser(self._cfg.get("rec_dir") or "~/Videos/DankoTV")
+        d = QFileDialog.getExistingDirectory(self, "Carpeta de grabaciones", cur)
+        if not d:
+            return
+        cfg.save_settings({"rec_dir": d})
+        self._cfg["rec_dir"] = d
+        self.statusBar().showMessage(f"Grabaciones en: {d}", 5000)
+
+    def export_lists(self):
+        """Copia listas + canales + favoritos a una carpeta elegida."""
+        import shutil
+        import time as _time
+        from PyQt6.QtWidgets import QFileDialog
+
+        d = QFileDialog.getExistingDirectory(self, "Exportar listas a…")
+        if not d:
+            return
+        stamp = _time.strftime("%Y%m%d_%H%M%S")
+        dest = os.path.join(d, f"dankotv_listas_{stamp}")
+        try:
+            os.makedirs(dest, exist_ok=True)
+            n = 0
+            for f in ("lists.json", "channels.db", "settings.json"):
+                src = os.path.join(cfg.CONFIG_DIR, f)
+                if os.path.isfile(src):
+                    shutil.copy2(src, os.path.join(dest, f))
+                    n += 1
+            if not n:
+                raise FileNotFoundError("No hay listas para exportar")
+            n_lists = len(cfg.load_lists())
+            self.statusBar().showMessage(
+                f"Exportadas {n_lists} listas ({n} archivos) → {dest}", 8000)
+        except Exception as e:
+            QMessageBox.warning(self, "Exportar listas", f"No se pudo exportar:\n{e}")
 
     # --- canales ---
     def _set_groups(self, groups):

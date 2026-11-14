@@ -30,8 +30,14 @@ MENUS = {
         {"id": "epg_minus", "label": "Hora EPG −1h", "slot": "epg_shift_less", "tip": "Atrasar horarios EPG de esta lista"},
         {"id": "fs2", "label": "Pantalla completa", "slot": "toggle_fullscreen"},
         {"id": "fav", "label": "Marcar favorito", "slot": "toggle_favorite"},
-        {"id": "skin", "label": "Tema", "submenu": "skins"},
-        {"id": "font", "label": "Fuente", "submenu": "fonts"},
+    ],
+    "Opciones": [
+        {"id": "skin", "label": "Tema", "submenu": "skins", "tip": "Tema de la interfaz"},
+        {"id": "font", "label": "Fuente", "submenu": "fonts", "tip": "Fuente del texto"},
+        {"id": "rec_dir", "label": "Carpeta de grabaciones…", "slot": "pick_rec_dir",
+         "tip": "Dónde se guardan los .mp4 de ⏺ (default: ~/Videos/DankoTV)"},
+        {"id": "export_lists", "label": "Exportar listas…", "slot": "export_lists",
+         "tip": "Copia listas + canales + favoritos a una carpeta"},
     ],
     "Ayuda": [
         {"id": "about", "label": "Acerca de Danko TV", "slot": "about"},

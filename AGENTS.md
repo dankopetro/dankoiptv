@@ -4,14 +4,18 @@
 fue verificado empíricamente (probado en vivo contra IPTV real) o aprendido por errores
 propios durante el desarrollo. NO repetir errores ya probados.
 
-Última actualización: 02/10/2026 (build 2108 en prueba; web Vercel en raíz + copia `web/`)
+Última actualización: 14/11/2026 (build `0.3-20261114-1407` instalado: fix grabación .ts + menú Opciones; tests `python3 -m unittest discover -s tests`)
 
 ---
 
 ## 0. Estado ACTUAL del proyecto
 
-- **Danko TV 0.2** (`0.2-20261003-1419`, tag local `v1.1` sin pushear): shell nuevo PyQt6 funcional, en pruebas del usuario
-  (ventana "Mis listas" verificada en captura 02/10/2026). Novedad: buscador de
+- **Danko TV 0.3** (`0.3-20261114-1407`, instalado en la laptop): shell nuevo PyQt6 funcional, en pruebas del usuario
+  (ventana "Mis listas" verificada en captura 02/10/2026). Novedad de esta
+  versión: **menú "Opciones"** (Tema/Fuente migrados desde Ver + Carpeta de
+  grabaciones + Exportar listas) y **fix del bug de grabación** que no guardaba
+  nada en streams .ts (ver detalle en "Últimos builds válidos" abajo y §Grabación).
+  Sigue vigente: buscador de
   categorías (cajita visible estilo Android que filtra el desplegable de grupos);
   el buscador general abarca todos los canales aunque haya grupo elegido.
   EPG fase 1: tira Ahora/Siguiente + menú Ver > Guía (grilla con ambos buscadores),
@@ -24,13 +28,22 @@ propios durante el desarrollo. NO repetir errores ya probados.
   AppImage del build 2244 adjuntos. El sitio Vercel sirve el `index.html` de la **raíz** del repo:
   no moverlo ni reemplazarlo por otra app; hay una copia de trabajo en `web/index.html`.
 - **Últimos builds válidos** (en la raíz del repo, generados por `./build-dankotv.sh`):
-  - `0.2-20261003-1419` (.deb + AppImage) ← **el que el usuario está probando**
-    (GRABACIÓN: ⏺/R ffmpeg copy a .ts + remux auto a .mp4 en ~/Videos/DankoTV;
-    vivo 1:1 con `-re -live_start_index -1` — sin eso ffmpeg devora la ventana
-    HLS (10s pared→47s contenido, verificado 03/10/2026); archivo = copia rápida;
-    Ver > Desde el inicio por catchup si el proveedor lo trae — vivo puro NO
-    rebobinable; EPG fase 1; buscadores; shift por lista; snapshot anti-vaciado;
-    anti-bloqueo verificado 02/10/2026)
+  - `0.3-20261114-1407` (.deb + AppImage) ← **instalado en la laptop 14/11**
+    (GRABACIÓN ARREGLADA: `-live_start_index -1` solo pasa con URLs .m3u8 —
+    en streams .ts directos ffmpeg abortaba en <1s con "Option
+    live_start_index not found" sin crear el archivo (bug "ayer no guardó",
+    causa raíz verificada 14/11 con el canal A24 de la lista gQUkHt52);
+    reintento sin la opción si igual falla; stderr de ffmpeg a
+    ~/.config/dankotv/record.log (antes DEVNULL = error invisible) +
+    últimas líneas en el diálogo; tests en tests/test_record.py
+    `python3 -m unittest discover -s tests` — 8 verdes, incluye grabación
+    live real. NUEVO MENÚ **Opciones**: Tema/Fuente (movidos desde Ver) +
+    "Carpeta de grabaciones…" (settings rec_dir, default ~/Videos/DankoTV) +
+    "Exportar listas…" (copia lists.json + channels.db + settings.json a
+    dankotv_listas_<stamp>/))
+  - `0.2-20261003-1419`/`1423` (.deb + AppImage) — anterior, con el bug de
+    grabación en .ts; EPG fase 1; buscadores; shift por lista; snapshot
+    anti-vaciado; anti-bloqueo verificado 02/10/2026
   - Anteriores: `0.2-20261002-2244`, `0.2-20261002-2234`, `0.2-20261002-2221`, `0.2-20261002-2158`, `0.2-20261002-2143`, `0.1-20260906-2108` (solo .deb), `0.1-20260907-1252`
   - Symlinks estables: `./dankotv-x86_64.AppImage` / `./dankotv_all.deb` → siempre
     apuntan al último build (hoy: 2124)
