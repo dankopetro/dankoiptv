@@ -26,6 +26,7 @@ MENUS = {
     "Ver": [
         {"id": "guide", "label": "Guía de programación", "slot": "open_guide", "tip": "Grilla EPG con buscadores"},
         {"id": "restart", "label": "Ver desde el inicio", "slot": "play_from_start", "tip": "Repetición del programa actual (si el proveedor tiene catchup)"},
+        {"id": "save_last", "label": "⏪ Guardar últimos 5 min…", "slot": "save_last_5", "tip": "Recorta del buffer lo que ya viste y lo guarda (solo con ⏺ activo)"},
         {"id": "epg_plus", "label": "Hora EPG +1h", "slot": "epg_shift_more", "tip": "Adelantar horarios EPG de esta lista"},
         {"id": "epg_minus", "label": "Hora EPG −1h", "slot": "epg_shift_less", "tip": "Atrasar horarios EPG de esta lista"},
         {"id": "fs2", "label": "Pantalla completa", "slot": "toggle_fullscreen"},
@@ -34,6 +35,8 @@ MENUS = {
     "Opciones": [
         {"id": "skin", "label": "Tema", "submenu": "skins", "tip": "Tema de la interfaz"},
         {"id": "font", "label": "Fuente", "submenu": "fonts", "tip": "Fuente del texto"},
+        {"id": "buffer", "label": "Buffer del vivo…", "submenu": "buffer",
+         "tip": "Minutos de vivo que se pueden rebobinar (por defecto 30)"},
         {"id": "rec_dir", "label": "Carpeta de grabaciones…", "slot": "pick_rec_dir",
          "tip": "Dónde se guardan los .mp4 de ⏺ (default: ~/Videos/DankoTV)"},
         {"id": "export_lists", "label": "Exportar listas…", "slot": "export_lists",

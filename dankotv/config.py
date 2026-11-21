@@ -13,6 +13,7 @@ DEFAULT_SETTINGS = {
     "last_list": "",
     "last_group": "Todas",
     "cache_secs": 45,
+    "buffer_mins": 30,  # rebobinado del vivo (menú Opciones / tecla , y .); 0 = desactivar
     "favorites": {},
     "rec_dir": "",  # Opciones > Carpeta de grabaciones… (vacío = ~/Videos/DankoTV)
 }

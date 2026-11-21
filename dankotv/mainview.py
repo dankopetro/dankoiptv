@@ -57,12 +57,21 @@ class MainWindow(QMainWindow):
         self.filtered = []
         self._ver = version
         self._cfg = cfg.load_settings()
+        # Buffer de rebobinado: minutos de vivo que mpv retiene en memoria.
+        try:
+            self._buffer_mins = max(0, int(self._cfg.get("buffer_mins", 30)))
+        except Exception:
+            self._buffer_mins = 30
+        self._cache_secs = max(45, self._buffer_mins * 60)
         self.player = None
         self._rec = None  # (proc, ts_path, mp4_path, title) o None
+        self._rec_start_wall = 0.0  # time.time() del play que originó la grabación
+        self._play_wall = 0.0       # idem para el play actual (base del rebase)
         self._playing_live = True
         self._playing_idx = -1
         self._playing_url = ""
         self._playing_title = ""
+        self._rec_since_save = False  # True tras "Guardar últimos X min"
         self._apply_window_chrome()
         self._build_ui()
         self.setStatusBar(QStatusBar())
@@ -254,7 +263,12 @@ class MainWindow(QMainWindow):
             self.on_select(item)
 
     def toggle_record(self):
-        """⏺ / R: inicia o detiene la grabación (.ts + remux auto a .mp4)."""
+        """⏺ / R: inicia o detiene la grabación (.ts + remux auto a .mp4).
+
+        Si estás rebobinado (atrasado del vivo), el archivo arranca desde
+        el punto que estás viendo: descarta el adelanto y redondea al
+        segundo (force-seekable del vivo = seek exacto).
+        """
         try:
             from . import record as recmod
         except Exception as e:
@@ -278,14 +292,69 @@ class MainWindow(QMainWindow):
         if not self._playing_url:
             QMessageBox.warning(self, "Grabar", "Primero elegí un canal.")
             return
+        # Atraso del vivo: segundos entre el play original y ahora. Si el
+        # usuario rebobinó, esto > 0 → el .ts arranca "saltando" el adelanto.
+        ahead = max(0.0, time.time() - self._play_wall)
+        skip = int(round(ahead)) if ahead > 3 else 0
         try:
-            proc, ts_path, mp4_path = recmod.start(
-                self._playing_url, self._playing_title or "canal",
-                live=self._playing_live)
+            if skip:
+                proc, ts_path, mp4_path = recmod.start(
+                    self._playing_url, self._playing_title or "canal",
+                    live=self._playing_live, skip_secs=skip)
+                self.statusBar().showMessage(
+                    f"⏺ Grabando {self._playing_title} (desde lo que estás viendo)...", 10000)
+            else:
+                proc, ts_path, mp4_path = recmod.start(
+                    self._playing_url, self._playing_title or "canal",
+                    live=self._playing_live)
+                self.statusBar().showMessage(
+                    f"⏺ Grabando {self._playing_title}... (⏺ para detener)", 10000)
             self._rec = (proc, ts_path, mp4_path, self._playing_title)
-            self.statusBar().showMessage(f"⏺ Grabando {self._playing_title}... (⏺ para detener)", 10000)
         except Exception as e:
             QMessageBox.warning(self, "Grabar", f"No se pudo grabar:\n{e}")
+
+    def save_last(self, minutes=None):
+        """⏪ Guardar últimos X min: recorta del buffer (lo ya mirado) los
+        últimos minutos y los guarda como .mp4 en rec_dir()."""
+        if not self._rec:
+            QMessageBox.warning(self, "Guardar últimos", "Dale primero a ⏺ para grabar.")
+            return
+        try:
+            from . import record as recmod
+        except Exception as e:
+            QMessageBox.warning(self, "Guardar últimos", f"No se pudo iniciar:\n{e}")
+            return
+        proc, ts_path, mp4_path, title = self._rec
+        if proc.poll() is not None:
+            QMessageBox.warning(self, "Guardar últimos",
+                                "La grabación se cortó. Reiniciá ⏺.")
+            self._rec = None
+            return
+        try:
+            dur = max(0.1, recmod.duration_seconds(ts_path))
+        except Exception:
+            dur = 0.0
+        want = (int(minutes) * 60) if minutes else max(30.0, dur)
+        keep = min(want, dur)
+        start = max(0.0, dur - keep)
+        self._rec = None  # el hilo de recorte toma la posta
+        self._rec_since_save = True
+        self.statusBar().showMessage(
+            f"Guardando últimos {start:.0f}s → {int(keep)}s...", 15000)
+        bridge = _Bridge(self._on_rec_done, self)
+
+        def work():
+            try:
+                final = recmod.trim_and_remux(ts_path, mp4_path, start, keep)
+                bridge.done.emit((final, ""))
+            except Exception as e:
+                bridge.done.emit((None, str(e)))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def save_last_5(self):
+        """Menú Ver: atajo a Guardar últimos 5 min."""
+        self.save_last(5)
 
     def _on_rec_done(self, final, err):
         if final:
@@ -306,6 +375,62 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage(f"Grabación detenida: {final}", 8000)
         except Exception:
             pass
+
+    # --- time-shift: rebobinar el vivo + atajos de buffer ---
+    def rewind(self):
+        """Tecla , : atrasar 60s dentro del buffer del vivo."""
+        if self.player and self._playing_live:
+            self.player.seek_relative(-60)
+
+    def forward(self):
+        """Tecla . : adelantar 60s (volver al vivo)."""
+        if self.player and self._playing_live:
+            self.player.seek_relative(60)
+
+    def set_buffer(self, mins):
+        """Menú Opciones: minutos de rebobinado (0 = desactivar). Aplica al
+        próximo canal; si además baja el buffer, el actual pierde lo viejo."""
+        try:
+            self._buffer_mins = max(0, int(mins))
+        except Exception:
+            return
+        cfg.save_settings({"buffer_mins": self._buffer_mins})
+        self._cache_secs = max(45, self._buffer_mins * 60)
+        if self.player:
+            self.player.set_cache_secs(self._cache_secs)
+        if self._buffer_mins:
+            self.statusBar().showMessage(
+                f"Buffer del vivo: {self._buffer_mins} min de rebobinado", 6000)
+        else:
+            self.statusBar().showMessage("Buffer del vivo desactivado", 6000)
+
+    def _on_player_pos(self, pos):
+        """Tira de posición: 'AHORA 1:23:45' o 'EN VIVO' si está al borde."""
+        if not self.player or pos < 0:
+            return
+        try:
+            dur = self.player.duration
+        except Exception:
+            dur = 0.0
+        if self._playing_live:
+            # Al borde si a menos de 75s del final (el vivo real "no tiene
+            # final": duration ~ último PTS; con buffer chico siempre cerca).
+            if dur > 0 and (dur - pos) <= 75:
+                if self._rec:
+                    self.now_label.setText(
+                        f"🔴 {self._playing_title} — EN VIVO  ·  AHORA {int(round(pos))}s")
+                else:
+                    self.now_label.setText(
+                        f"▶ {self._playing_title} — EN VIVO")
+            else:
+                self.now_label.setText(
+                    f"⏪ {self._playing_title} — AHORA {int(round(pos))}s / {int(round(dur))}s")
+        # (VOD: la posición la maneja la OSD de mpv; no tocamos la etiqueta)
+
+    def _on_cache_pause(self, paused):
+        """Aviso cuando mpv se pausa por falta de datos (rebobinado/carga)."""
+        if paused:
+            self.statusBar().showMessage("⏸ Cargando…", 3000)
 
     def screenshot(self):
         if self.player:
@@ -482,6 +607,23 @@ class MainWindow(QMainWindow):
                 grp.addAction(act)
                 menu.addAction(act)
                 self._font_acts.append(act)
+        elif kind == "buffer":
+            cur = self._buffer_mins
+            self._buffer_acts = []
+            for mins in (15, 30, 60, 90, 0):
+                label = "Desactivado" if mins == 0 else f"{mins} min"
+                act = QAction(label, self)
+                act.setCheckable(True)
+                act.setChecked(mins == cur)
+                act.triggered.connect(lambda _=False, m=mins: self._on_buffer_menu(m))
+                grp.addAction(act)
+                menu.addAction(act)
+                self._buffer_acts.append(act)
+
+    def _on_buffer_menu(self, mins):
+        self.set_buffer(mins)
+        for act, m in zip(self._buffer_acts, (15, 30, 60, 90, 0)):
+            act.setChecked(m == mins)
 
     def cycle_skin(self):
         names = skins.SKIN_NAMES
@@ -789,8 +931,10 @@ class MainWindow(QMainWindow):
         if not self.player:
             try:
                 wid = int(self.video_frame.winId())
-                self.player = SeamlessPlayer(wid=wid if wid else None, cache_secs=int(self._cfg.get("cache_secs", 45)))
+                self.player = SeamlessPlayer(wid=wid if wid else None, cache_secs=self._cache_secs)
                 self.player.on_double_click = self.toggle_fullscreen
+                self.player.on_position = self._on_player_pos
+                self.player.on_cache_pause = self._on_cache_pause
             except Exception as e:
                 QMessageBox.warning(self, "Video", f"No se pudo iniciar mpv:\n{e}\nsudo apt install libmpv2 mpv")
                 return
@@ -799,6 +943,7 @@ class MainWindow(QMainWindow):
         self._refresh_fav_btn()
         try:
             self.player.play(ch.get("url"), is_live=True)
+            self._play_wall = time.time()
         except Exception as e:
             QMessageBox.warning(self, "Video", f"Error: {e}")
         self._fetch_epg_strip(ch)
@@ -903,6 +1048,15 @@ class MainWindow(QMainWindow):
             return
         if ev.key() == Qt.Key.Key_R and not ev.modifiers():
             self.toggle_record()
+            return
+        if ev.key() == Qt.Key.Key_Comma and not ev.modifiers():
+            self.rewind()
+            return
+        if ev.key() == Qt.Key.Key_Period and not ev.modifiers():
+            self.forward()
+            return
+        if ev.key() == Qt.Key.Key_B and not ev.modifiers():
+            self.save_last_5()
             return
         super().keyPressEvent(ev)
 

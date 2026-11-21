@@ -114,6 +114,27 @@ def _spawn(cmd, log_path):
     return proc
 
 
+def rebased_cmd(url, skip_secs, ts_path, live=True):
+    """Como build_cmd pero descartando los primeros skip_secs del stream
+    (para grabar DESDE el punto donde estás mirando, no desde el borde
+    del vivo). Solo tiene sentido con skip_secs > 0. Respeta las mismas
+    reglas de -live_start_index / -re que build_cmd."""
+    if skip_secs is None or skip_secs <= 0:
+        return build_cmd(url, ts_path, live)
+    cmd = ["ffmpeg", "-nostats", "-hide_banner", "-loglevel", "warning",
+           "-user_agent", "Mozilla/5.0"]
+    if live:
+        cmd += ["-re"]
+        if _is_hls(url):
+            cmd += ["-live_start_index", "-1"]
+    cmd += ["-reconnect", "1", "-reconnect_streamed", "1",
+            "-reconnect_on_network_error", "1",
+            "-ss", str(int(skip_secs)), "-i", url,
+            "-map", "0", "-codec", "copy",
+            "-max_muxing_queue_size", "4096", "-y", ts_path]
+    return cmd
+
+
 def _wait_open(proc, ts_path, seconds=2.0):
     """Espera a que ffmpeg abra el stream. Devuelve True si sigue vivo o
     dejó archivo (modo archivo puede terminar descargando todo)."""
@@ -125,18 +146,23 @@ def _wait_open(proc, ts_path, seconds=2.0):
     return True
 
 
-def start(url, title, live=True):
+def start(url, title, live=True, skip_secs=0):
     """Inicia ffmpeg. live=True: ritmo 1:1 desde el borde (HLS no corre).
     live=False (repetición/archivo): copia rápida del archivo completo.
+    skip_secs>0: descarta los primeros segundos del stream (para grabar
+    desde el punto donde estás mirando, no desde el borde del vivo).
     Devuelve (proc, ts_path, mp4_path) o lanza RuntimeError."""
     if not ffmpeg_ok():
         raise RuntimeError("Falta ffmpeg (sudo apt install ffmpeg)")
     if not url:
         raise RuntimeError("Sin URL para grabar.")
     ts_path, mp4_path = _paths(title)
-    cmd = build_cmd(url, ts_path, live)
-    log.info("REC start: %s", ts_path)
-    _append_rec_log(f"REC start live={live} url={url}\n")
+    if skip_secs and skip_secs > 0:
+        cmd = rebased_cmd(url, skip_secs, ts_path, live)
+    else:
+        cmd = build_cmd(url, ts_path, live)
+    log.info("REC start: %s (skip=%ss)", ts_path, skip_secs)
+    _append_rec_log(f"REC start live={live} skip={skip_secs} url={url}\n")
     proc = _spawn(cmd, REC_LOG)
     if _wait_open(proc, ts_path):
         return proc, ts_path, mp4_path
@@ -184,3 +210,57 @@ def stop(proc, ts_path, mp4_path):
         log.warning("REC remux: %s", e)
         _append_rec_log(f"REC remux excepción: {e}\n")
         return ts_path if os.path.isfile(ts_path) else None
+
+
+def duration_seconds(ts_path):
+    """Duración del .ts en segundos (ffprobe). 0.0 si no se puede leer."""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "csv=p=0", ts_path],
+            capture_output=True, text=True, timeout=15)
+        return float((r.stdout or "0").strip() or 0.0)
+    except Exception:
+        return 0.0
+
+
+def trim_and_remux(ts_path, mp4_path, start_s, keep_s):
+    """Corta [start_s, start_s+keep_s) del .ts grabado y lo remuxe a .mp4.
+
+    Lección 21/11/2026: cortar un .ts directo a .mp4 con -c copy PIERDE el
+    video (el PTS del video arranca en 1.4s y el audio en 0; ffmpeg descarta
+    el video del primer GOP). Solución: cortar a un .ts intermedio
+    (mismo formato, PTS consistentes) y de ahí remux a .mp4.
+    Devuelve la ruta final o lanza."""
+    if not os.path.isfile(ts_path) or os.path.getsize(ts_path) == 0:
+        raise RuntimeError("El archivo de grabación no existe o está vacío.")
+    dur = duration_seconds(ts_path)
+    if dur <= 0:
+        # Sin duración conocida (ts "infinito"): usar keep_s tal cual.
+        end_s = keep_s
+    else:
+        end_s = min(dur, start_s + keep_s)
+    cut_ts = os.path.splitext(ts_path)[0] + ".cut.ts"
+    cmd_cut = ["ffmpeg", "-nostats", "-hide_banner", "-loglevel", "warning",
+               "-ss", f"{start_s:.2f}", "-to", f"{end_s:.2f}",
+               "-i", ts_path, "-codec", "copy", "-y", cut_ts]
+    r = subprocess.run(cmd_cut, timeout=300, capture_output=True)
+    if r.returncode != 0 or not os.path.isfile(cut_ts) or os.path.getsize(cut_ts) == 0:
+        err = (r.stderr or b"").decode("utf-8", "replace").splitlines()[-8:]
+        _append_rec_log("REC recorte (ts) falló:\n" + "\n".join(err) + "\n")
+        raise RuntimeError("ffmpeg no pudo recortar:\n" + "\n".join(err))
+    cmd = ["ffmpeg", "-nostats", "-hide_banner", "-loglevel", "warning",
+           "-i", cut_ts, "-codec", "copy", "-y", mp4_path]
+    r2 = subprocess.run(cmd, timeout=300, capture_output=True)
+    for f in (cut_ts, ts_path):
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+    if r2.returncode == 0 and os.path.isfile(mp4_path):
+        log.info("REC recorte %s-%ss → %s", start_s, end_s, mp4_path)
+        _append_rec_log(f"REC recorte ok: {mp4_path} ({start_s:.0f}s+{keep_s:.0f}s)\n")
+        return mp4_path
+    err = (r2.stderr or b"").decode("utf-8", "replace").splitlines()[-8:]
+    _append_rec_log("REC remux del recorte falló:\n" + "\n".join(err) + "\n")
+    raise RuntimeError("ffmpeg no pudo remuxear el recorte:\n" + "\n".join(err))

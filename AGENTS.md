@@ -4,7 +4,7 @@
 fue verificado empíricamente (probado en vivo contra IPTV real) o aprendido por errores
 propios durante el desarrollo. NO repetir errores ya probados.
 
-Última actualización: 14/11/2026 (build `0.3-20261114-1407` instalado: fix grabación .ts + menú Opciones — **VERIFICADO POR EL USUARIO** ("está perfecto"); release **v1.2** publicada en GitHub con .deb + AppImage; tests `python3 -m unittest discover -s tests`)
+Última actualización: 21/11/2026 (build `0.3-20261121-2054`: time-shift — rebobinar el vivo con mpv + buffer configurable + ⏪ Guardar últimos X min + atajos `,`/`.`/`B`; 14 tests verdes; paquete extraído importa OK). Release pendiente.
 
 ---
 

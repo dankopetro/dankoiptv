@@ -5,6 +5,7 @@ DANKO_REC_LIVE=0 (default en CI/sin red es 1 — acá corre con red).
 """
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -48,6 +49,32 @@ class BuildCmdTest(unittest.TestCase):
         self.assertFalse(record._is_hls("http://x/a.mp4"))
 
 
+class RebasedCmdTest(unittest.TestCase):
+    """start(skip_secs) → ffmpeg con -ss tras -re (descarta el adelanto)."""
+
+    def test_skip_pasa_ss_tras_re(self):
+        cmd = record.rebased_cmd(LIVE_URL, 30, "/tmp/x.ts", live=True)
+        i_re = cmd.index("-re")
+        i_ss = cmd.index("-ss")
+        self.assertGreater(i_ss, i_re, "-ss debe ir después de -re")
+        self.assertEqual(cmd[i_ss + 1], "30")
+        # .ts directo: sin -live_start_index (regla del bug 14/11)
+        self.assertNotIn("-live_start_index", cmd)
+
+    def test_skip_hls_mantiene_live_start_index(self):
+        cmd = record.rebased_cmd(HLS_URL, 12, "/tmp/x.ts", live=True)
+        self.assertIn("-live_start_index", cmd)
+        self.assertIn("-ss", cmd)
+
+    def test_sin_skip_cero(self):
+        cmd = record.rebased_cmd(LIVE_URL, 0, "/tmp/x.ts", live=True)
+        self.assertNotIn("-ss", cmd)
+
+    def test_skip_negativo_ignorado(self):
+        cmd = record.rebased_cmd(LIVE_URL, -5, "/tmp/x.ts", live=True)
+        self.assertNotIn("-ss", cmd)
+
+
 class RecDirTest(unittest.TestCase):
     def test_default_sin_setting(self):
         from dankotv import config
@@ -66,6 +93,64 @@ class RecDirTest(unittest.TestCase):
             self.assertEqual(record.rec_dir(), "/tmp/mis grabaciones")
         finally:
             config.load_settings = old
+
+
+@unittest.skipUnless(record.ffmpeg_ok(), "ffmpeg no instalado")
+class RecorteTest(unittest.TestCase):
+    """Trim del .ts grabado a [start, start+keep) sin recodificar."""
+
+    def test_duration_y_recorte_de_archivo_real(self):
+        tmp = tempfile.mkdtemp(prefix="dankotrim_")
+        try:
+            # Archivo de 3s: 90 frames a 30fps de color + 1s de silencio.
+            # -g 30: keyframe cada segundo (como los streams IPTV reales,
+            # GOP ~2s); sin esto el generador deja UN SOLO keyframe y
+            # cualquier corte posterior pierde el video.
+            ts = os.path.join(tmp, "b.ts")
+            subprocess.run(
+                ["ffmpeg", "-nostats", "-loglevel", "error",
+                 "-f", "lavfi", "-i", "testsrc=size=160x120:rate=30",
+                 "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
+                 "-t", "3", "-c:v", "libx264", "-preset", "ultrafast",
+                 "-g", "30", "-pix_fmt", "yuv420p", "-c:a", "aac", "-y", ts],
+                capture_output=True, timeout=60)
+            self.assertTrue(os.path.isfile(ts), "no se creó el .ts")
+            dur = record.duration_seconds(ts)
+            self.assertGreater(dur, 2.5, f"duración rara: {dur}")
+            self.assertLess(dur, 3.5, f"duración rara: {dur}")
+
+            mp4 = os.path.join(tmp, "c.mp4")
+            final = record.trim_and_remux(ts, mp4, start_s=1.0, keep_s=1.0)
+            self.assertEqual(final, mp4)
+            self.assertTrue(os.path.isfile(mp4))
+            self.assertGreater(os.path.getsize(mp4), 5000, "recorte vacío")
+            # el .ts se borra luego del recorte OK
+            self.assertFalse(os.path.exists(ts))
+            # duración del recorte ~1s (±0.5)
+            d2 = record.duration_seconds(mp4)
+            self.assertGreater(d2, 0.5, f"recorte corto: {d2}")
+            self.assertLess(d2, 1.6, f"recorte largo: {d2}")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_recorte_fuera_de_rango(self):
+        """start+keep mayor que la duración: recorta hasta el final."""
+        tmp = tempfile.mkdtemp(prefix="dankotrim2_")
+        try:
+            ts = os.path.join(tmp, "b.ts")
+            subprocess.run(
+                ["ffmpeg", "-nostats", "-loglevel", "error",
+                 "-f", "lavfi", "-i", "testsrc=size=160x120:rate=30",
+                 "-t", "2", "-c:v", "libx264", "-preset", "ultrafast",
+                 "-g", "30", "-pix_fmt", "yuv420p", "-y", ts],
+                capture_output=True, timeout=60)
+            mp4 = os.path.join(tmp, "c.mp4")
+            final = record.trim_and_remux(ts, mp4, start_s=0.5, keep_s=999)
+            self.assertEqual(final, mp4)
+            d2 = record.duration_seconds(mp4)
+            self.assertGreater(d2, 0.5, f"recorte raro: {d2}")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 @unittest.skipUnless(os.environ.get("DANKO_REC_LIVE", "1") == "1",
