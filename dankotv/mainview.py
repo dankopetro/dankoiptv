@@ -77,7 +77,9 @@ class MainWindow(QMainWindow):
         self._playing_title = ""
         self._rec_since_save = False  # True tras "Guardar últimos X min"
         self._apply_window_chrome()
-        self.setWindowIcon(QIcon(QPixmap(os.path.join(os.path.dirname(__file__), "assets", "dankotv.svg"))))
+        icon_path = os.path.join(os.path.dirname(__file__), "assets", "dankotv.svg")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
         self._build_ui()
         self.setStatusBar(QStatusBar())
         self.set_list(self.entry, self.channels, groups or [])
@@ -201,6 +203,8 @@ class MainWindow(QMainWindow):
         )
         self._rec_label.hide()
         self._rec_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._rec_label.setMinimumSize(200, 40)
+        self._rec_label.move(12, 12)
         self._rec_timer = QTimer(self)
         self._rec_timer.timeout.connect(self._update_rec_label)
         self._rec_seconds = 0
@@ -335,6 +339,8 @@ class MainWindow(QMainWindow):
             self._rec = (proc, ts_path, mp4_path, self._playing_title)
             self._rec_seconds = 0
             self._rec_label.setText("⏺ Grabando... 0s")
+            self._rec_label.adjustSize()
+            self._rec_label.move(12, 12)
             self._rec_label.show()
             self._rec_label.raise_()
             self._rec_timer.start(1000)
@@ -468,6 +474,9 @@ class MainWindow(QMainWindow):
     def _update_rec_label(self):
         self._rec_seconds += 1
         self._rec_label.setText(f"⏺ Grabando... {self._rec_seconds}s")
+        self._rec_label.adjustSize()
+        self._rec_label.move(12, 12)
+        self._rec_label.raise_()
 
     def set_buffer(self, mins):
         """Menú Opciones: minutos de buffer del vivo (0 = desactivar).
