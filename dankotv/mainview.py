@@ -324,29 +324,46 @@ class MainWindow(QMainWindow):
             skip = int(round(self.player.position)) if self.player and self.player.position > 3 else 0
         except Exception:
             skip = 0
-        try:
-            if skip:
-                proc, ts_path, mp4_path = recmod.start(
-                    self._playing_url, self._playing_title or "canal",
-                    live=self._playing_live, skip_secs=skip)
-                self.statusBar().showMessage(
-                    f"⏺ Grabando {self._playing_title} (desde lo que estás viendo)...", 10000)
-            else:
-                proc, ts_path, mp4_path = recmod.start(
-                    self._playing_url, self._playing_title or "canal",
-                    live=self._playing_live)
-                self.statusBar().showMessage(
-                    f"⏺ Grabando {self._playing_title}... (⏺ para detener)", 10000)
-            self._rec = (proc, ts_path, mp4_path, self._playing_title)
-            self._rec_seconds = 0
-            self._rec_label.setText("GRABANDO 0s")
-            self._rec_label.adjustSize()
-            self._rec_label.move(self.width() - self._rec_label.width() - 12, 12)
-            self._rec_label.show()
-            self._rec_label.raise_()
-            self._rec_timer.start(1000)
-        except Exception as e:
-            QMessageBox.warning(self, "Grabar", f"No se pudo grabar:\n{e}")
+        # Mostrar cartel inmediatamente (antes de arrancar ffmpeg, que tarda ~2s)
+        self._rec_seconds = 0
+        self._rec_label.setText("GRABANDO 0s")
+        self._rec_label.adjustSize()
+        self._rec_label.move(self.width() - self._rec_label.width() - 12, 12)
+        self._rec_label.show()
+        self._rec_label.raise_()
+        # Arrancar ffmpeg en hilo para no bloquear la UI (~2s de espera al abrir)
+        bridge = _Bridge(self._on_rec_started, self)
+
+        def work():
+            try:
+                if skip:
+                    proc, ts_path, mp4_path = recmod.start(
+                        self._playing_url, self._playing_title or "canal",
+                        live=self._playing_live, skip_secs=skip)
+                    self.statusBar().showMessage(
+                        f"⏺ Grabando {self._playing_title} (desde lo que estás viendo)...", 10000)
+                else:
+                    proc, ts_path, mp4_path = recmod.start(
+                        self._playing_url, self._playing_title or "canal",
+                        live=self._playing_live)
+                    self.statusBar().showMessage(
+                        f"⏺ Grabando {self._playing_title}... (⏺ para detener)", 10000)
+                bridge.done.emit((True, (proc, ts_path, mp4_path)))
+            except Exception as e:
+                bridge.done.emit((False, str(e)))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_rec_started(self, ok, result):
+        if not ok:
+            self._rec_timer.stop()
+            self._rec_label.hide()
+            err = result if isinstance(result, str) else str(result)
+            QMessageBox.warning(self, "Grabar", f"No se pudo grabar:\n{err}")
+            return
+        proc, ts_path, mp4_path = result
+        self._rec = (proc, ts_path, mp4_path, self._playing_title)
+        self._rec_timer.start(1000)
 
     def save_last(self, minutes=None):
         """⏪ Guardar últimos X min: recorta del buffer (lo ya mirado) y lo
