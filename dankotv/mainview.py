@@ -353,8 +353,54 @@ class MainWindow(QMainWindow):
     def save_last_5(self):
         """Menú Ver: atajo a Guardar últimos 5 min."""
         self.save_last(5)
-        """Menú Ver: atajo a Guardar últimos 5 min."""
-        self.save_last(5)
+
+    def save_range_custom(self):
+        """⏪ Guardar rango: desde hace X min hasta hace Y min del buffer."""
+        if not self._buffer or not self._buffer.is_active():
+            QMessageBox.warning(self, "Guardar rango",
+                                "Activá el buffer del vivo (Opciones > Buffer) "
+                                "antes de guardar.")
+            return
+        dur = self._buffer.duration()
+        if dur <= 0:
+            QMessageBox.warning(self, "Guardar rango", "Buffer vacío todavía.")
+            return
+        max_min = int(dur // 60)
+        if max_min < 1:
+            QMessageBox.warning(self, "Guardar rango",
+                                f"Aún hay poco buffer ({int(dur)}s). Esperá un poco.")
+            return
+        from PyQt6.QtWidgets import QInputDialog
+        desde, ok1 = QInputDialog.getInt(
+            self, "Guardar rango", f"Desde hace cuántos minutos (1-{max_min}):",
+            value=min(5, max_min), min=1, max=max_min)
+        if not ok1:
+            return
+        hasta_max = max(1, desde - 1)
+        hasta, ok2 = QInputDialog.getInt(
+            self, "Guardar rango", f"Hasta hace cuántos minutos (0={'ahora'}, 1-{hasta_max}):",
+            value=0, min=0, max=hasta_max)
+        if not ok2:
+            return
+        try:
+            from . import record as recmod
+        except Exception as e:
+            QMessageBox.warning(self, "Guardar rango", f"No se pudo iniciar:\n{e}")
+            return
+        out = os.path.join(recmod.rec_dir(),
+                           f"{time.strftime('%Y%m%d_%H%M%S')}_{recmod.safe_name(self._playing_title or 'canal')}.mp4")
+        self.statusBar().showMessage(
+            f"Guardando de hace {desde}min a hace {hasta}min...", 15000)
+        bridge = _Bridge(self._on_rec_done, self)
+
+        def work():
+            try:
+                final = self._buffer.save_range(desde * 60, hasta * 60, out)
+                bridge.done.emit((final, ""))
+            except Exception as e:
+                bridge.done.emit((None, str(e)))
+
+        threading.Thread(target=work, daemon=True).start()
 
     def _on_rec_done(self, final, err):
         if final:
@@ -1075,6 +1121,9 @@ class MainWindow(QMainWindow):
             return
         if ev.key() == Qt.Key.Key_B and not ev.modifiers():
             self.save_last_5()
+            return
+        if ev.key() == Qt.Key.Key_G and not ev.modifiers():
+            self.save_range_custom()
             return
         super().keyPressEvent(ev)
 
