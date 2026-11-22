@@ -316,14 +316,12 @@ class MainWindow(QMainWindow):
         if not self._playing_url:
             QMessageBox.warning(self, "Grabar", "Primero elegí un canal.")
             return
-        # Desde dónde arranca el archivo: la posición REAL del reproductor.
-        # Si estás en el borde del vivo, position ≈ lo que lleva el stream y
-        # el .ts empieza AHORA. Si rebobinaste, position está atrasado y el
-        # .ts empieza desde donde estás mirando (no desde ahora).
-        try:
-            skip = int(round(self.player.position)) if self.player and self.player.position > 3 else 0
-        except Exception:
-            skip = 0
+        # En vivo: grabar SIEMPRE desde el borde del vivo (skip=0).
+        # No usar self.player.position: lleva retraso de buffer y hacía que
+        # el archivo empezara antes de lo que se veía y faltaran segundos al
+        # final. Si querés grabar algo que ya pasó, usá el buffer del vivo
+        # (Opciones > Buffer) y "Guardar rango".
+        skip = 0
         # Mostrar cartel inmediatamente (antes de arrancar ffmpeg, que tarda ~2s)
         self._rec_seconds = 0
         self._rec_label.setText("GRABANDO 0s")
@@ -336,18 +334,11 @@ class MainWindow(QMainWindow):
 
         def work():
             try:
-                if skip:
-                    proc, ts_path, mp4_path = recmod.start(
-                        self._playing_url, self._playing_title or "canal",
-                        live=self._playing_live, skip_secs=skip)
-                    self.statusBar().showMessage(
-                        f"⏺ Grabando {self._playing_title} (desde lo que estás viendo)...", 10000)
-                else:
-                    proc, ts_path, mp4_path = recmod.start(
-                        self._playing_url, self._playing_title or "canal",
-                        live=self._playing_live)
-                    self.statusBar().showMessage(
-                        f"⏺ Grabando {self._playing_title}... (⏺ para detener)", 10000)
+                proc, ts_path, mp4_path = recmod.start(
+                    self._playing_url, self._playing_title or "canal",
+                    live=self._playing_live)
+                self.statusBar().showMessage(
+                    f"⏺ Grabando {self._playing_title}... (⏺ para detener)", 10000)
                 bridge.done.emit((True, (proc, ts_path, mp4_path)))
             except Exception as e:
                 bridge.done.emit((False, str(e)))
