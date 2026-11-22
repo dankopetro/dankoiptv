@@ -196,7 +196,7 @@ class MainWindow(QMainWindow):
         rl.addWidget(self.video_frame, stretch=1)
 
         # Contador de grabación (overlay rojo, solo UI, no se graba en el video)
-        self._rec_label = QLabel("⏺ Grabando...", self.video_frame)
+        self._rec_label = QLabel("GRABANDO", self)
         self._rec_label.setStyleSheet(
             "background-color: rgba(255, 255, 255, 210); color: #c00000; "
             "font-weight: bold; font-size: 16px; padding: 8px 16px; "
@@ -341,7 +341,7 @@ class MainWindow(QMainWindow):
             self._rec_seconds = 0
             self._rec_label.setText("GRABANDO 0s")
             self._rec_label.adjustSize()
-            self._rec_label.move(self.video_frame.width() - self._rec_label.width() - 12, 12)
+            self._rec_label.move(self.width() - self._rec_label.width() - 12, 12)
             self._rec_label.show()
             self._rec_label.raise_()
             self._rec_timer.start(1000)
@@ -476,8 +476,13 @@ class MainWindow(QMainWindow):
         self._rec_seconds += 1
         self._rec_label.setText(f"GRABANDO {self._rec_seconds}s")
         self._rec_label.adjustSize()
-        self._rec_label.move(self.video_frame.width() - self._rec_label.width() - 12, 12)
+        self._rec_label.move(self.width() - self._rec_label.width() - 12, 12)
         self._rec_label.raise_()
+
+    def resizeEvent(self, ev):
+        super().resizeEvent(ev)
+        if self._rec_label and self._rec_label.isVisible():
+            self._rec_label.move(self.width() - self._rec_label.width() - 12, 12)
 
     def set_buffer(self, mins):
         """Menú Opciones: minutos de buffer del vivo (0 = desactivar).
