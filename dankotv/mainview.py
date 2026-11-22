@@ -198,12 +198,13 @@ class MainWindow(QMainWindow):
         # Contador de grabación (overlay rojo, solo UI, no se graba en el video)
         self._rec_label = QLabel("⏺ Grabando...", self.video_frame)
         self._rec_label.setStyleSheet(
-            "background-color: #ff0000; color: #ffffff; font-weight: bold; "
-            "font-size: 15px; padding: 6px 14px; border-radius: 6px;"
+            "background-color: rgba(255, 255, 255, 210); color: #c00000; "
+            "font-weight: bold; font-size: 16px; padding: 8px 16px; "
+            "border-radius: 8px; border: 2px solid #c00000;"
         )
         self._rec_label.hide()
         self._rec_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        self._rec_label.setMinimumSize(200, 40)
+        self._rec_label.setMinimumSize(240, 44)
         self._rec_label.move(12, 12)
         self._rec_timer = QTimer(self)
         self._rec_timer.timeout.connect(self._update_rec_label)
@@ -338,7 +339,7 @@ class MainWindow(QMainWindow):
                     f"⏺ Grabando {self._playing_title}... (⏺ para detener)", 10000)
             self._rec = (proc, ts_path, mp4_path, self._playing_title)
             self._rec_seconds = 0
-            self._rec_label.setText("⏺ Grabando... 0s")
+            self._rec_label.setText("GRABANDO 0s")
             self._rec_label.adjustSize()
             self._rec_label.move(12, 12)
             self._rec_label.show()
@@ -473,7 +474,7 @@ class MainWindow(QMainWindow):
 
     def _update_rec_label(self):
         self._rec_seconds += 1
-        self._rec_label.setText(f"⏺ Grabando... {self._rec_seconds}s")
+        self._rec_label.setText(f"GRABANDO {self._rec_seconds}s")
         self._rec_label.adjustSize()
         self._rec_label.move(12, 12)
         self._rec_label.raise_()
