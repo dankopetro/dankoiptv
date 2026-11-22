@@ -14,7 +14,7 @@ TOOLBAR = [
     {"id": "live", "label": "VIVO", "slot": "go_live", "tip": "Volver al borde del vivo"},
     {"id": "record", "label": "⏺", "slot": "toggle_record", "tip": "Grabar (R)"},
     {"id": "save_last", "label": "5 min", "slot": "save_last_5", "tip": "Guardar últimos 5 min del buffer (B)"},
-    {"id": "save_range", "label": "Rango", "slot": "save_range_custom", "tip": "Guardar desde hace X min hasta hace Y min (G)"},
+    {"id": "save_range", "label": "Rango", "slot": "save_range_custom", "tip": "Guarda segundos A a B del buffer (0 = inicio, dur = ahora)"},
     {"id": "shot", "label": "📷", "slot": "screenshot", "tip": "Captura (H)"},
     {"id": "mute", "label": "🔇", "slot": "toggle_mute", "tip": "Silenciar (M)"},
     {"id": "fs", "label": "⛶", "slot": "toggle_fullscreen", "tip": "Pantalla completa (doble clic / F11 / Esc)"},

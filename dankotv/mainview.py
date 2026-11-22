@@ -399,7 +399,9 @@ class MainWindow(QMainWindow):
         self.save_last(5)
 
     def save_range_custom(self):
-        """⏪ Guardar rango: desde hace X min hasta hace Y min del buffer."""
+        """⏪ Guardar rango: desde segundo A hasta segundo B del buffer
+        (0 = inicio del buffer, dur = ahora). Muestra la duración total
+        para que elijas exactamente (ej. 4380 a 4440 = 73:00 a 73:10)."""
         if not self._buffer or not self._buffer.is_active():
             QMessageBox.warning(self, "Guardar rango",
                                 "Activá el buffer del vivo (Opciones > Buffer) "
@@ -409,21 +411,19 @@ class MainWindow(QMainWindow):
         if dur <= 0:
             QMessageBox.warning(self, "Guardar rango", "Buffer vacío todavía.")
             return
-        max_min = int(dur // 60)
-        if max_min < 1:
-            QMessageBox.warning(self, "Guardar rango",
-                                f"Aún hay poco buffer ({int(dur)}s). Esperá un poco.")
-            return
+        max_s = int(dur)
+        min_s = f"{max_s // 60}:{max_s % 60:02d}"
         from PyQt6.QtWidgets import QInputDialog
         desde, ok1 = QInputDialog.getInt(
-            self, "Guardar rango", f"Desde hace cuántos minutos (1-{max_min}):",
-            value=min(5, max_min), min=1, max=max_min)
+            self, "Guardar rango",
+            f"Buffer: {min_s} total. Desde qué segundo (0-{max_s}):",
+            value=max(0, max_s - 600), min=0, max=max_s)
         if not ok1:
             return
-        hasta_max = max(1, desde - 1)
         hasta, ok2 = QInputDialog.getInt(
-            self, "Guardar rango", f"Hasta hace cuántos minutos (0={'ahora'}, 1-{hasta_max}):",
-            value=0, min=0, max=hasta_max)
+            self, "Guardar rango",
+            f"Hasta qué segundo ({desde + 1}-{max_s}, o {max_s} = ahora):",
+            value=max_s, min=desde + 1, max=max_s)
         if not ok2:
             return
         try:
@@ -433,13 +433,12 @@ class MainWindow(QMainWindow):
             return
         out = os.path.join(recmod.rec_dir(),
                            f"{time.strftime('%Y%m%d_%H%M%S')}_{recmod.safe_name(self._playing_title or 'canal')}.mp4")
-        # Congelo la duración ahora para que el corte no se desplace por el
-        # buffer que sigue creciendo mientras el usuario elige el rango.
+        # Congelo la duración para que el corte no se desplace.
         dur = self._buffer.duration()
-        start_s = max(0.0, dur - desde * 60)
-        end_s = max(start_s, min(dur, dur - hasta * 60))
+        start_s = max(0.0, min(float(desde), dur))
+        end_s = max(start_s, min(float(hasta), dur))
         self.statusBar().showMessage(
-            f"Guardando de hace {desde}min a hace {hasta}min...", 15000)
+            f"Guardando segundo {desde} a {hasta} del buffer...", 15000)
         bridge = _Bridge(self._on_rec_done, self)
 
         def work():
