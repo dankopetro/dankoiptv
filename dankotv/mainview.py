@@ -316,12 +316,10 @@ class MainWindow(QMainWindow):
         if not self._playing_url:
             QMessageBox.warning(self, "Grabar", "Primero elegí un canal.")
             return
-        # En vivo: grabar SIEMPRE desde el borde del vivo (skip=0).
-        # No usar self.player.position: lleva retraso de buffer y hacía que
-        # el archivo empezara antes de lo que se veía y faltaran segundos al
-        # final. Si querés grabar algo que ya pasó, usá el buffer del vivo
-        # (Opciones > Buffer) y "Guardar rango".
-        skip = 0
+        # En vivo: grabar desde el borde del vivo pero adelantando 3s para
+        # compensar el retraso del reproductor (el buffer de mpv va ~3s
+        # atrasado respecto a lo que se ve). Sin esto graba 3s antes.
+        skip = 3 if self._playing_live else 0
         # Mostrar cartel inmediatamente (antes de arrancar ffmpeg, que tarda ~2s)
         self._rec_seconds = 0
         self._rec_label.setText("GRABANDO 0s")
