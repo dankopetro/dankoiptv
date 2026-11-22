@@ -1,5 +1,6 @@
 """Vista principal Danko TV: video embebido + canales, layout declarativo."""
 import os
+import logging
 import threading
 import time
 from PyQt6.QtCore import Qt, QEvent, QTimer, pyqtSignal
@@ -17,6 +18,8 @@ from . import layout as L
 from . import skins
 from .home import NewListDialog, load_spec, _Bridge
 from .player import SeamlessPlayer
+
+log = logging.getLogger("dankotv.mainview")
 
 DISPLAY_LIMIT = 2000
 FS_LIST_WIDTH = 360
@@ -67,6 +70,7 @@ class MainWindow(QMainWindow):
         self._rec = None  # (proc, ts_path, mp4_path, title) o None
         self._rec_start_wall = 0.0  # time.time() del play que originó la grabación
         self._play_wall = 0.0       # idem para el play actual (base del rebase)
+        self._buffer = None  # LiveBuffer o None
         self._playing_live = True
         self._playing_idx = -1
         self._playing_url = ""
@@ -318,38 +322,28 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Grabar", f"No se pudo grabar:\n{e}")
 
     def save_last(self, minutes=None):
-        """⏪ Guardar últimos X min: recorta del buffer (lo ya mirado) los
-        últimos minutos y los guarda como .mp4 en rec_dir()."""
-        if not self._rec:
-            QMessageBox.warning(self, "Guardar últimos", "Dale primero a ⏺ para grabar.")
+        """⏪ Guardar últimos X min: recorta del buffer (lo ya mirado) y lo
+        guarda como .mp4 en rec_dir(). Requiere el buffer del vivo activo."""
+        if not self._buffer or not self._buffer.is_active():
+            QMessageBox.warning(self, "Guardar últimos",
+                                "Activá el buffer del vivo (Opciones > Buffer) "
+                                "antes de guardar.")
             return
         try:
             from . import record as recmod
         except Exception as e:
             QMessageBox.warning(self, "Guardar últimos", f"No se pudo iniciar:\n{e}")
             return
-        proc, ts_path, mp4_path, title = self._rec
-        if proc.poll() is not None:
-            QMessageBox.warning(self, "Guardar últimos",
-                                "La grabación se cortó. Reiniciá ⏺.")
-            self._rec = None
-            return
-        try:
-            dur = max(0.1, recmod.duration_seconds(ts_path))
-        except Exception:
-            dur = 0.0
-        want = (int(minutes) * 60) if minutes else max(30.0, dur)
-        keep = min(want, dur)
-        start = max(0.0, dur - keep)
-        self._rec = None  # el hilo de recorte toma la posta
-        self._rec_since_save = True
+        mins = int(minutes) if minutes else self._buffer_mins
+        out = os.path.join(recmod.rec_dir(),
+                           f"{time.strftime('%Y%m%d_%H%M%S')}_{recmod.safe_name(self._playing_title or 'canal')}.mp4")
         self.statusBar().showMessage(
-            f"Guardando últimos {start:.0f}s → {int(keep)}s...", 15000)
+            f"Guardando últimos {mins} min del vivo...", 15000)
         bridge = _Bridge(self._on_rec_done, self)
 
         def work():
             try:
-                final = recmod.trim_and_remux(ts_path, mp4_path, start, keep)
+                final = self._buffer.save_last(mins, out)
                 bridge.done.emit((final, ""))
             except Exception as e:
                 bridge.done.emit((None, str(e)))
@@ -357,6 +351,8 @@ class MainWindow(QMainWindow):
         threading.Thread(target=work, daemon=True).start()
 
     def save_last_5(self):
+        """Menú Ver: atajo a Guardar últimos 5 min."""
+        self.save_last(5)
         """Menú Ver: atajo a Guardar últimos 5 min."""
         self.save_last(5)
 
@@ -392,19 +388,24 @@ class MainWindow(QMainWindow):
             self.player.seek_relative(60)
 
     def set_buffer(self, mins):
-        """Menú Opciones: minutos de rebobinado (0 = desactivar). Aplica al
-        próximo canal; si además baja el buffer, el actual pierde lo viejo."""
+        """Menú Opciones: minutos de buffer del vivo (0 = desactivar).
+        Arranca ffmpeg grabando al disco mientras ves; mpv sigue fluido."""
         try:
             self._buffer_mins = max(0, int(mins))
         except Exception:
             return
         cfg.save_settings({"buffer_mins": self._buffer_mins})
-        self._cache_secs = max(45, self._buffer_mins * 60)
-        if self.player:
-            self.player.set_cache_secs(self._cache_secs)
-        if self._buffer_mins:
+        if self._buffer:
+            self._buffer.stop()
+            self._buffer = None
+        if self._buffer_mins and self._playing_url:
+            from . import record as recmod
+            self._buffer = recmod.LiveBuffer(
+                self._playing_url, self._playing_title or "canal",
+                max_minutes=self._buffer_mins)
+            self._buffer.start()
             self.statusBar().showMessage(
-                f"Buffer del vivo: {self._buffer_mins} min de rebobinado", 6000)
+                f"Buffer del vivo: {self._buffer_mins} min (grabando al disco)", 6000)
         else:
             self.statusBar().showMessage("Buffer del vivo desactivado", 6000)
 
@@ -951,6 +952,19 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.warning(self, "Video", f"Error: {e}")
         self._fetch_epg_strip(ch)
+        # (Re)arrancar buffer del vivo para este canal
+        try:
+            if self._buffer:
+                self._buffer.stop()
+                self._buffer = None
+            if self._buffer_mins and self._playing_url:
+                from . import record as recmod
+                self._buffer = recmod.LiveBuffer(
+                    self._playing_url, self._playing_title or "canal",
+                    max_minutes=self._buffer_mins)
+                self._buffer.start()
+        except Exception as e:
+            log.warning("buffer restart failed: %s", e)
 
     def _fetch_epg_strip(self, ch):
         """Tira Ahora/Siguiente en hilo (patrón _Bridge: UI siempre en hilo Qt)."""
@@ -1071,6 +1085,12 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         cfg.save_settings({"last_group": self._current_group()})
         self._stop_rec_silent(notice=False)
+        if self._buffer:
+            try:
+                self._buffer.stop()
+            except Exception:
+                pass
+            self._buffer = None
         if self._fullscreen:
             try:
                 self._leave_fullscreen()

@@ -264,3 +264,86 @@ def trim_and_remux(ts_path, mp4_path, start_s, keep_s):
     err = (r2.stderr or b"").decode("utf-8", "replace").splitlines()[-8:]
     _append_rec_log("REC remux del recorte falló:\n" + "\n".join(err) + "\n")
     raise RuntimeError("ffmpeg no pudo remuxear el recorte:\n" + "\n".join(err))
+
+
+# --- buffer continuo de vivo (Opción A) ---
+BUFFER_DIR = os.path.join(CONFIG_DIR, "buffer")  # ~/.config/dankotv/buffer/
+
+
+class LiveBuffer:
+    """Graba continuamente el vivo a un .ts temporal para poder rebobinar
+    y guardar los últimos X min SIN entrecortar la reproducción de mpv.
+
+    ffmpeg escribe a ritmo real (-re) en un solo .ts. Un hilo monitor
+    reinicia el archivo cuando supera max_minutes (ring buffer simple).
+    Consume una conexión extra al proveedor (máx 3 en tu cuenta)."""
+
+    def __init__(self, url, title, max_minutes=60):
+        self.url = url
+        self.title = title
+        self.max_minutes = max_minutes
+        self.proc = None
+        self.ts_path = None
+        self.start_wall = None
+        self._active = False
+
+    def start(self):
+        os.makedirs(BUFFER_DIR, exist_ok=True)
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        base = os.path.join(BUFFER_DIR, f"{stamp}_{safe_name(self.title)}")
+        self.ts_path = base + ".ts"
+        self.start_wall = time.time()
+        self._active = True
+        cmd = build_cmd(self.url, self.ts_path, live=True)
+        log.info("BUFFER start: %s (máx %s min)", self.ts_path, self.max_minutes)
+        _append_rec_log(f"BUFFER start max={self.max_minutes} url={self.url}\n")
+        self.proc = _spawn(cmd, REC_LOG)
+        threading.Thread(target=self._monitor, daemon=True).start()
+
+    def _monitor(self):
+        while self._active and self.proc and self.proc.poll() is None:
+            time.sleep(5)
+            if self.start_wall and (time.time() - self.start_wall) > self.max_minutes * 60:
+                # Ring buffer: reinicia (borra lo más viejo)
+                try:
+                    self.stop()
+                except Exception:
+                    pass
+                if self._active:
+                    self.start()
+
+    def stop(self):
+        self._active = False
+        if self.proc:
+            try:
+                self.proc.terminate()
+                self.proc.wait(timeout=8)
+            except Exception:
+                try:
+                    self.proc.kill()
+                except Exception:
+                    pass
+            self.proc = None
+        if self.ts_path and os.path.isfile(self.ts_path):
+            try:
+                os.remove(self.ts_path)
+            except OSError:
+                pass
+            self.ts_path = None
+
+    def is_active(self):
+        return self._active and self.proc is not None and self.proc.poll() is None
+
+    def duration(self):
+        return duration_seconds(self.ts_path) if self.ts_path else 0.0
+
+    def save_last(self, minutes, out_mp4):
+        """Recorta los últimos `minutes` del buffer y los guarda como .mp4."""
+        if not self.ts_path or not os.path.isfile(self.ts_path):
+            raise RuntimeError("No hay buffer activo.")
+        dur = self.duration()
+        if dur <= 0:
+            raise RuntimeError("Buffer vacío (todavía no hay datos).")
+        keep = min(float(minutes) * 60.0, dur)
+        start = max(0.0, dur - keep)
+        return trim_and_remux(self.ts_path, out_mp4, start, keep)
