@@ -389,13 +389,18 @@ class MainWindow(QMainWindow):
             return
         out = os.path.join(recmod.rec_dir(),
                            f"{time.strftime('%Y%m%d_%H%M%S')}_{recmod.safe_name(self._playing_title or 'canal')}.mp4")
+        # Congelo la duración ahora para que el corte no se desplace por el
+        # buffer que sigue creciendo mientras el usuario elige el rango.
+        dur = self._buffer.duration()
+        start_s = max(0.0, dur - desde * 60)
+        end_s = max(start_s, min(dur, dur - hasta * 60))
         self.statusBar().showMessage(
             f"Guardando de hace {desde}min a hace {hasta}min...", 15000)
         bridge = _Bridge(self._on_rec_done, self)
 
         def work():
             try:
-                final = self._buffer.save_range(desde * 60, hasta * 60, out)
+                final = self._buffer.save_range_abs(start_s, end_s, out)
                 bridge.done.emit((final, ""))
             except Exception as e:
                 bridge.done.emit((None, str(e)))
@@ -1176,6 +1181,8 @@ class MainWindow(QMainWindow):
         self._fs_timer.timeout.connect(self._fs_tick)
         self._fs_list.installEventFilter(self)
         self.search.installEventFilter(self)
+        self.video_frame.installEventFilter(self)
+        self._fs_bar.installEventFilter(self)
 
     def eventFilter(self, obj, ev):
         if (
@@ -1185,6 +1192,20 @@ class MainWindow(QMainWindow):
         ):
             self._on_escape()
             return True
+        if self._fullscreen and ev.type() == QEvent.Type.KeyPress:
+            k = ev.key()
+            if k == Qt.Key.Key_Comma:
+                self.rewind()
+                return True
+            if k == Qt.Key.Key_Period:
+                self.forward()
+                return True
+            if k == Qt.Key.Key_B:
+                self.save_last_5()
+                return True
+            if k == Qt.Key.Key_G:
+                self.save_range_custom()
+                return True
         return super().eventFilter(obj, ev)
 
     def _set_osc(self, on):

@@ -348,18 +348,35 @@ class LiveBuffer:
         start = max(0.0, dur - keep)
         return trim_and_remux(self.ts_path, out_mp4, start, keep)
 
-    def save_range(self, start_ago_s, end_ago_s, out_mp4):
+    def save_range(self, start_ago_s, end_ago_s, out_mp4, dur=None):
         """Guarda un rango del buffer: desde `start_ago_s` segundos atrás
         hasta `end_ago_s` segundos atrás (start_ago > end_ago).
         Ej. start_ago=180 (hace 3 min), end_ago=60 (hace 1 min) guarda
-        el segmento de hace 3 min a hace 1 min. end_ago=0 = hasta ahora."""
+        el segmento de hace 3 min a hace 1 min. end_ago=0 = hasta ahora.
+        `dur` se congela al abrir el diálogo para evitar desfase por el
+        buffer que sigue creciendo."""
         if not self.ts_path or not os.path.isfile(self.ts_path):
             raise RuntimeError("No hay buffer activo.")
-        dur = self.duration()
+        if dur is None:
+            dur = self.duration()
         if dur <= 0:
             raise RuntimeError("Buffer vacío (todavía no hay datos).")
         start = max(0.0, dur - float(start_ago_s))
         end = min(dur, dur - float(end_ago_s))
         if end <= start:
             raise RuntimeError("Rango vacío (start_ago debe ser > end_ago).")
+        return trim_and_remux(self.ts_path, out_mp4, start, end - start)
+
+    def save_range_abs(self, start_s, end_s, out_mp4):
+        """Guarda [start_s, end_s) en segundos absolutos del buffer.
+        Usado cuando se congeló la duración en el diálogo."""
+        if not self.ts_path or not os.path.isfile(self.ts_path):
+            raise RuntimeError("No hay buffer activo.")
+        dur = self.duration()
+        if dur <= 0:
+            raise RuntimeError("Buffer vacío.")
+        start = max(0.0, min(start_s, dur))
+        end = max(start, min(end_s, dur))
+        if end <= start:
+            raise RuntimeError("Rango vacío.")
         return trim_and_remux(self.ts_path, out_mp4, start, end - start)
