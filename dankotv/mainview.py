@@ -292,10 +292,14 @@ class MainWindow(QMainWindow):
         if not self._playing_url:
             QMessageBox.warning(self, "Grabar", "Primero elegí un canal.")
             return
-        # Atraso del vivo: segundos entre el play original y ahora. Si el
-        # usuario rebobinó, esto > 0 → el .ts arranca "saltando" el adelanto.
-        ahead = max(0.0, time.time() - self._play_wall)
-        skip = int(round(ahead)) if ahead > 3 else 0
+        # Desde dónde arranca el archivo: la posición REAL del reproductor.
+        # Si estás en el borde del vivo, position ≈ lo que lleva el stream y
+        # el .ts empieza AHORA. Si rebobinaste, position está atrasado y el
+        # .ts empieza desde donde estás mirando (no desde ahora).
+        try:
+            skip = int(round(self.player.position)) if self.player and self.player.position > 3 else 0
+        except Exception:
+            skip = 0
         try:
             if skip:
                 proc, ts_path, mp4_path = recmod.start(
