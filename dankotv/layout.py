@@ -11,6 +11,7 @@ TOOLBAR = [
     {"id": "next", "label": "⏭", "slot": "next_channel", "tip": "Canal siguiente (N)"},
     {"id": "rewind", "label": "⏪ −60s", "slot": "rewind", "tip": "Atrasar 60s (coma ,)"},
     {"id": "forward", "label": "⏩ +60s", "slot": "forward", "tip": "Adelantar 60s (punto .)"},
+    {"id": "live", "label": "▶ VIVO", "slot": "go_live", "tip": "Volver al borde del vivo"},
     {"id": "record", "label": "⏺", "slot": "toggle_record", "tip": "Grabar (R)"},
     {"id": "save_last", "label": "⏱ Últimos 5 min", "slot": "save_last_5", "tip": "Guardar últimos 5 min del buffer (B)"},
     {"id": "save_range", "label": "⏲ Rango…", "slot": "save_range_custom", "tip": "Guardar desde hace X min hasta hace Y min (G)"},

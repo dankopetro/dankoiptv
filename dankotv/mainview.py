@@ -192,6 +192,18 @@ class MainWindow(QMainWindow):
         self.video_frame = VideoFrame(self)
         rl.addWidget(self.video_frame, stretch=1)
 
+        # Contador de grabación (overlay rojo, solo UI, no se graba en el video)
+        self._rec_label = QLabel("⏺ Grabando...", self.video_frame)
+        self._rec_label.setStyleSheet(
+            "background-color: #ff0000; color: #ffffff; font-weight: bold; "
+            "font-size: 15px; padding: 6px 14px; border-radius: 6px;"
+        )
+        self._rec_label.hide()
+        self._rec_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._rec_timer = QTimer(self)
+        self._rec_timer.timeout.connect(self._update_rec_label)
+        self._rec_seconds = 0
+
         self.now_label = QLabel("Sin reproducción")
         self.now_label.setObjectName("muted")
         rl.addWidget(self.now_label)
@@ -281,6 +293,8 @@ class MainWindow(QMainWindow):
         if self._rec:
             proc, ts_path, mp4_path, title = self._rec
             self._rec = None
+            self._rec_timer.stop()
+            self._rec_label.hide()
             self.statusBar().showMessage("Convirtiendo a MP4...", 10000)
             bridge = _Bridge(self._on_rec_done, self)
 
@@ -318,6 +332,11 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage(
                     f"⏺ Grabando {self._playing_title}... (⏺ para detener)", 10000)
             self._rec = (proc, ts_path, mp4_path, self._playing_title)
+            self._rec_seconds = 0
+            self._rec_label.setText("⏺ Grabando... 0s")
+            self._rec_label.show()
+            self._rec_label.raise_()
+            self._rec_timer.start(1000)
         except Exception as e:
             QMessageBox.warning(self, "Grabar", f"No se pudo grabar:\n{e}")
 
@@ -421,6 +440,8 @@ class MainWindow(QMainWindow):
 
             proc, ts_path, mp4_path, title = self._rec
             self._rec = None
+            self._rec_timer.stop()
+            self._rec_label.hide()
             final = recmod.stop(proc, ts_path, mp4_path)
             if notice:
                 self.statusBar().showMessage(f"Grabación detenida: {final}", 8000)
@@ -437,6 +458,15 @@ class MainWindow(QMainWindow):
         """Tecla . : adelantar 60s (volver al vivo)."""
         if self.player and self._playing_live:
             self.player.seek_relative(60)
+
+    def go_live(self):
+        """Volver al borde del vivo (salta todo lo rebobinado)."""
+        if self.player and self._playing_live:
+            self.player.seek_relative(3600)
+
+    def _update_rec_label(self):
+        self._rec_seconds += 1
+        self._rec_label.setText(f"⏺ Grabando... {self._rec_seconds}s")
 
     def set_buffer(self, mins):
         """Menú Opciones: minutos de buffer del vivo (0 = desactivar).
