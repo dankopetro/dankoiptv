@@ -175,7 +175,9 @@ class SeamlessPlayer:
                 self.mpv.keep_open = True
                 self.mpv.keep_open_pause = False
                 self.mpv.loop_playlist = "no"
-                self.mpv.force_seekable = True
+                # force-seekable solo si el buffer de rebobinado está activo;
+                # en .ts directo vivo forzar seekable entrecorta la reproducción.
+                self.mpv.force_seekable = bool(self._buffer_mins and self._cache_secs > 45)
             else:
                 self.mpv.keep_open = False
                 self.mpv.force_seekable = True
