@@ -341,7 +341,7 @@ class MainWindow(QMainWindow):
             self._rec_seconds = 0
             self._rec_label.setText("GRABANDO 0s")
             self._rec_label.adjustSize()
-            self._rec_label.move(12, 12)
+            self._rec_label.move(self.video_frame.width() - self._rec_label.width() - 12, 12)
             self._rec_label.show()
             self._rec_label.raise_()
             self._rec_timer.start(1000)
@@ -476,7 +476,7 @@ class MainWindow(QMainWindow):
         self._rec_seconds += 1
         self._rec_label.setText(f"GRABANDO {self._rec_seconds}s")
         self._rec_label.adjustSize()
-        self._rec_label.move(12, 12)
+        self._rec_label.move(self.video_frame.width() - self._rec_label.width() - 12, 12)
         self._rec_label.raise_()
 
     def set_buffer(self, mins):
