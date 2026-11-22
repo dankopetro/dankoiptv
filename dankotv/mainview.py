@@ -67,9 +67,12 @@ class MainWindow(QMainWindow):
             self._buffer_mins = 30
         self._cache_secs = max(45, self._buffer_mins * 60)
         self.player = None
-        self._rec = None  # (proc, ts_path, mp4_path, title) o None
+        self._rec = None  # (proc, ts_path, mp4_path, title) o None (ffmpeg directo/VOD)
         self._rec_start_wall = 0.0  # time.time() del play que originó la grabación
         self._play_wall = 0.0       # idem para el play actual (base del rebase)
+        self._buf_rec_start = None  # marca de buffer (s absolutos) o None
+        self._buf_rec_pending = False  # esperando que el buffer esté listo
+        self._rec_delay = 0.0  # retraso medido al arrancar grabación (s)
         self._buffer = None  # LiveBuffer o None
         self._playing_live = True
         self._playing_idx = -1
@@ -285,49 +288,146 @@ class MainWindow(QMainWindow):
             self.on_select(item)
 
     def toggle_record(self):
-        """⏺ / R: inicia o detiene la grabación (.ts + remux auto a .mp4).
+        """⏺ / R: graba exacto desde el click (buffer) o ffmpeg directo (VOD).
 
-        Si estás rebobinado (atrasado del vivo), el archivo arranca desde
-        el punto que estás viendo: descarta el adelanto y redondea al
-        segundo (force-seekable del vivo = seek exacto).
+        En vivo usa el LiveBuffer que ya está corriendo: marca inicio/fin al
+        tocar ⏺ y recorta ese rango, así la duración del archivo = duración
+        del contador. Si el buffer no está listo, espera, informa el retraso
+        y compensa el final.
         """
         try:
             from . import record as recmod
         except Exception as e:
             QMessageBox.warning(self, "Grabar", f"No se pudo iniciar:\n{e}")
             return
-        if self._rec:
-            proc, ts_path, mp4_path, title = self._rec
-            self._rec = None
+
+        # --- detener grabación activa ---
+        if self._buf_rec_pending:
+            self._buf_rec_pending = False
             self._rec_timer.stop()
             self._rec_label.hide()
-            self.statusBar().showMessage("Convirtiendo a MP4...", 10000)
-            bridge = _Bridge(self._on_rec_done, self)
-
-            def work():
-                try:
-                    final = recmod.stop(proc, ts_path, mp4_path)
-                    bridge.done.emit((final, ""))
-                except Exception as e:
-                    bridge.done.emit((None, str(e)))
-
-            threading.Thread(target=work, daemon=True).start()
+            self.statusBar().showMessage("Grabación cancelada", 4000)
             return
+        if self._buf_rec_start is not None:
+            self._stop_buf_recording()
+            return
+        if self._rec:
+            self._stop_direct_recording()
+            return
+
         if not self._playing_url:
             QMessageBox.warning(self, "Grabar", "Primero elegí un canal.")
             return
-        # En vivo: grabar desde el borde del vivo pero adelantando 3s para
-        # compensar el retraso del reproductor (el buffer de mpv va ~3s
-        # atrasado respecto a lo que se ve). Sin esto graba 3s antes.
-        skip = 3 if self._playing_live else 0
-        # Mostrar cartel inmediatamente (antes de arrancar ffmpeg, que tarda ~2s)
+
+        if self._playing_live:
+            self._start_buf_recording(recmod)
+        else:
+            self._start_direct_recording(recmod)
+
+    def _start_buf_recording(self, recmod):
+        """Grabación en vivo desde el buffer: marca exacta al click."""
+        # Cartel inmediato
+        self._rec_delay = 0.0
         self._rec_seconds = 0
         self._rec_label.setText("GRABANDO 0s")
         self._rec_label.adjustSize()
         self._rec_label.move(self.width() - self._rec_label.width() - 12, 12)
         self._rec_label.show()
         self._rec_label.raise_()
-        # Arrancar ffmpeg en hilo para no bloquear la UI (~2s de espera al abrir)
+
+        buf = self._buffer
+        if buf and buf.ready():
+            self._buf_rec_start = buf.mark()
+            buf.recording = True
+            self._rec_timer.start(1000)
+            self.statusBar().showMessage(
+                f"⏺ Grabando {self._playing_title}... (⏺ para detener)", 10000)
+            return
+
+        # Buffer no listo: arrancarlo/esperarlo y medir retraso real
+        self._buf_rec_pending = True
+        self._rec_label.setText("GRABANDO… preparando")
+        self._rec_label.adjustSize()
+        bridge = _Bridge(self._on_buf_record_ready, self)
+
+        def work():
+            try:
+                b = self._ensure_live_buffer(recmod)
+                ok, delay = b.wait_ready(timeout=15.0, min_secs=0.5)
+                if not ok:
+                    bridge.done.emit((False, "El buffer no pudo arrancar."))
+                    return
+                bridge.done.emit((True, (b.mark(), delay)))
+            except Exception as e:
+                bridge.done.emit((False, str(e)))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_buf_record_ready(self, ok, result):
+        if not self._buf_rec_pending:
+            return  # cancelado por el usuario
+        self._buf_rec_pending = False
+        if not ok:
+            self._rec_timer.stop()
+            self._rec_label.hide()
+            self._buf_rec_start = None
+            err = result if isinstance(result, str) else str(result)
+            QMessageBox.warning(self, "Grabar", f"No se pudo grabar:\n{err}")
+            return
+        mark, delay = result
+        self._rec_delay = float(delay or 0.0)
+        self._buf_rec_start = float(mark)
+        if self._buffer:
+            self._buffer.recording = True
+        self._rec_seconds = 0
+        self._update_rec_label()
+        self._rec_timer.start(1000)
+        msg = f"⏺ Grabando {self._playing_title}..."
+        if self._rec_delay >= 0.5:
+            msg += f" (empezó {self._rec_delay:.1f}s tarde; contador desde grabación real)"
+        self.statusBar().showMessage(msg, 12000)
+
+    def _stop_buf_recording(self):
+        from . import record as recmod
+        buf = self._buffer
+        start_mark = self._buf_rec_start
+        self._buf_rec_start = None
+        self._rec_timer.stop()
+        self._rec_label.hide()
+        if buf:
+            buf.recording = False
+        if not buf or start_mark is None:
+            self.statusBar().showMessage("Grabación cancelada (sin buffer)", 6000)
+            return
+        end_mark = buf.mark()
+        comp = -3.2  # compensación interna vivo/mpv (alineación observada)
+        out = os.path.join(recmod.rec_dir(),
+                           f"{time.strftime('%Y%m%d_%H%M%S')}_{recmod.safe_name(self._playing_title or 'canal')}.mp4")
+        secs = max(0, int(round(end_mark - start_mark)))
+        msg = f"Convirtiendo a MP4 ({secs}s)"
+        if self._rec_delay >= 0.5:
+            msg += f" — empezó {self._rec_delay:.1f}s tarde"
+        msg += "..."
+        self.statusBar().showMessage(msg, 15000)
+        bridge = _Bridge(self._on_rec_done, self)
+
+        def work():
+            try:
+                final = buf.cut_between(start_mark, end_mark, out, offset_s=comp)
+                bridge.done.emit((final, ""))
+            except Exception as e:
+                bridge.done.emit((None, str(e)))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _start_direct_recording(self, recmod):
+        """Grabación directa ffmpeg (VOD/archivo, sin buffer de vivo)."""
+        self._rec_seconds = 0
+        self._rec_label.setText("GRABANDO 0s")
+        self._rec_label.adjustSize()
+        self._rec_label.move(self.width() - self._rec_label.width() - 12, 12)
+        self._rec_label.show()
+        self._rec_label.raise_()
         bridge = _Bridge(self._on_rec_started, self)
 
         def work():
@@ -335,11 +435,27 @@ class MainWindow(QMainWindow):
                 proc, ts_path, mp4_path = recmod.start(
                     self._playing_url, self._playing_title or "canal",
                     live=self._playing_live)
-                self.statusBar().showMessage(
-                    f"⏺ Grabando {self._playing_title}... (⏺ para detener)", 10000)
                 bridge.done.emit((True, (proc, ts_path, mp4_path)))
             except Exception as e:
                 bridge.done.emit((False, str(e)))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _stop_direct_recording(self):
+        from . import record as recmod
+        proc, ts_path, mp4_path, title = self._rec
+        self._rec = None
+        self._rec_timer.stop()
+        self._rec_label.hide()
+        self.statusBar().showMessage("Convirtiendo a MP4...", 10000)
+        bridge = _Bridge(self._on_rec_done, self)
+
+        def work():
+            try:
+                final = recmod.stop(proc, ts_path, mp4_path)
+                bridge.done.emit((final, ""))
+            except Exception as e:
+                bridge.done.emit((None, str(e)))
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -353,6 +469,27 @@ class MainWindow(QMainWindow):
         proc, ts_path, mp4_path = result
         self._rec = (proc, ts_path, mp4_path, self._playing_title)
         self._rec_timer.start(1000)
+        self.statusBar().showMessage(
+            f"⏺ Grabando {self._playing_title}... (⏺ para detener)", 10000)
+
+    def _ensure_live_buffer(self, recmod=None):
+        """Devuelve un LiveBuffer activo; lo crea si hace falta."""
+        if self._buffer and self._buffer.is_active():
+            return self._buffer
+        if self._buffer:
+            try:
+                self._buffer.stop()
+            except Exception:
+                pass
+            self._buffer = None
+        if recmod is None:
+            from . import record as recmod
+        mins = self._buffer_mins if self._buffer_mins > 0 else 30
+        self._buffer = recmod.LiveBuffer(
+            self._playing_url, self._playing_title or "canal",
+            max_minutes=max(5, int(mins)))
+        self._buffer.start()
+        return self._buffer
 
     def save_last(self, minutes=None):
         """⏪ Guardar últimos X min: recorta del buffer (lo ya mirado) y lo
@@ -446,6 +583,39 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Grabar", f"Fallo al guardar:\n{err}")
 
     def _stop_rec_silent(self, notice=True):
+        if self._buf_rec_pending:
+            self._buf_rec_pending = False
+            try:
+                self._rec_timer.stop()
+                self._rec_label.hide()
+            except Exception:
+                pass
+            return
+        if self._buf_rec_start is not None:
+            try:
+                from . import record as recmod
+                buf = self._buffer
+                start_mark = self._buf_rec_start
+                end_mark = buf.mark() if buf else start_mark
+                self._buf_rec_start = None
+                self._rec_timer.stop()
+                self._rec_label.hide()
+                if buf:
+                    buf.recording = False
+                comp = -3.2  # compensación interna vivo/mpv
+                out = os.path.join(recmod.rec_dir(),
+                                   f"{time.strftime('%Y%m%d_%H%M%S')}_{recmod.safe_name(self._playing_title or 'canal')}.mp4")
+                final = buf.cut_between(start_mark, end_mark, out, offset_s=comp) if buf else None
+                if notice and final:
+                    self.statusBar().showMessage(f"Grabación detenida: {final}", 8000)
+            except Exception:
+                self._buf_rec_start = None
+                try:
+                    self._rec_timer.stop()
+                    self._rec_label.hide()
+                except Exception:
+                    pass
+            return
         if not self._rec:
             return
         try:
@@ -478,7 +648,10 @@ class MainWindow(QMainWindow):
             self.player.seek_relative(3600)
 
     def _update_rec_label(self):
-        self._rec_seconds += 1
+        if self._buf_rec_start is not None and self._buffer:
+            self._rec_seconds = max(0, int(self._buffer.elapsed() - self._buf_rec_start))
+        else:
+            self._rec_seconds += 1
         self._rec_label.setText(f"GRABANDO {self._rec_seconds}s")
         self._rec_label.adjustSize()
         self._rec_label.move(self.width() - self._rec_label.width() - 12, 12)
@@ -490,24 +663,30 @@ class MainWindow(QMainWindow):
             self._rec_label.move(self.width() - self._rec_label.width() - 12, 12)
 
     def set_buffer(self, mins):
-        """Menú Opciones: minutos de buffer del vivo (0 = desactivar).
-        Arranca ffmpeg grabando al disco mientras ves; mpv sigue fluido."""
+        """Menú Opciones: minutos de buffer del vivo (0 = mínimo para grabar).
+        Siempre se mantiene un buffer mínimo en vivo para grabación exacta."""
         try:
             self._buffer_mins = max(0, int(mins))
         except Exception:
             return
+        self._cfg["buffer_mins"] = self._buffer_mins
         cfg.save_settings({"buffer_mins": self._buffer_mins})
         if self._buffer:
             self._buffer.stop()
             self._buffer = None
-        if self._buffer_mins and self._playing_url:
+        if self._playing_live and self._playing_url:
             from . import record as recmod
+            eff = self._buffer_mins if self._buffer_mins > 0 else 5
             self._buffer = recmod.LiveBuffer(
                 self._playing_url, self._playing_title or "canal",
-                max_minutes=self._buffer_mins)
+                max_minutes=max(5, int(eff)))
             self._buffer.start()
-            self.statusBar().showMessage(
-                f"Buffer del vivo: {self._buffer_mins} min (grabando al disco)", 6000)
+            if self._buffer_mins > 0:
+                self.statusBar().showMessage(
+                    f"Buffer del vivo: {self._buffer_mins} min", 6000)
+            else:
+                self.statusBar().showMessage(
+                    "Buffer del vivo: mínimo (5 min) para grabación exacta", 6000)
         else:
             self.statusBar().showMessage("Buffer del vivo desactivado", 6000)
 
@@ -1029,7 +1208,7 @@ class MainWindow(QMainWindow):
         if row < 0 or row >= len(self.filtered):
             return
         ch = self.filtered[row]
-        if self._rec and (ch.get("url") or "") != self._playing_url:
+        if (self._rec or self._buf_rec_start is not None) and (ch.get("url") or "") != self._playing_url:
             self._stop_rec_silent(notice=True)
         self._playing_idx = row
         self._playing_live = True
@@ -1054,16 +1233,18 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.warning(self, "Video", f"Error: {e}")
         self._fetch_epg_strip(ch)
-        # (Re)arrancar buffer del vivo para este canal
+        # (Re)arrancar buffer del vivo para este canal (siempre en vivo:
+        # necesario para grabación exacta al click).
         try:
             if self._buffer:
                 self._buffer.stop()
                 self._buffer = None
-            if self._buffer_mins and self._playing_url:
+            if self._playing_live and self._playing_url:
                 from . import record as recmod
+                mins = self._buffer_mins if self._buffer_mins > 0 else 5
                 self._buffer = recmod.LiveBuffer(
                     self._playing_url, self._playing_title or "canal",
-                    max_minutes=self._buffer_mins)
+                    max_minutes=max(5, int(mins)))
                 self._buffer.start()
         except Exception as e:
             log.warning("buffer restart failed: %s", e)

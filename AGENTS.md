@@ -4,7 +4,7 @@
 fue verificado empíricamente (probado en vivo contra IPTV real) o aprendido por errores
 propios durante el desarrollo. NO repetir errores ya probados.
 
-Última actualización: 21/11/2026 (build `0.3-20261121-2054`: time-shift — rebobinar el vivo con mpv + buffer configurable + ⏪ Guardar últimos X min + atajos `,`/`.`/`B`; 14 tests verdes; paquete extraído importa OK). Release pendiente.
+Última actualización: 21/11/2026 (local, no pusheado: grabación exacta en vivo desde el click usando marcas del LiveBuffer — contador = duración del archivo, buffer siempre activo en vivo, compensación interna -3.2s vivo/mpv, delay informado si el buffer no estaba listo; 18 tests verdes, build `0.3-20261121-2326`).
 
 ---
 
@@ -28,6 +28,14 @@ propios durante el desarrollo. NO repetir errores ya probados.
   AppImage del build 2244 adjuntos. El sitio Vercel sirve el `index.html` de la **raíz** del repo:
   no moverlo ni reemplazarlo por otra app; hay una copia de trabajo en `web/index.html`.
 - **Últimos builds válidos** (en la raíz del repo, generados por `./build-dankotv.sh`):
+  - `0.3-20261121-2326` (.deb + AppImage) — **local, no pusheado** (grabación
+    exacta en vivo: ⏺ marca inicio/fin sobre el LiveBuffer que ya corre; el
+    contador sale de `buffer.elapsed()-marca`, así 10s en pantalla = 10s en
+    archivo; buffer siempre activo en vivo para grabación instantánea; si el
+    buffer no estaba listo, espera, informa el retraso y el contador arranca
+    desde la grabación real; compensación interna -3.2s vivo/mpv; cortes del
+    buffer con `keep_source=True`; ring restart del buffer no corre durante
+    grabación; 18 tests verdes con `DANKO_REC_LIVE=0`)
   - `0.3-20261114-1407` (.deb + AppImage) ← **instalado en la laptop 14/11**
     (GRABACIÓN ARREGLADA: `-live_start_index -1` solo pasa con URLs .m3u8 —
     en streams .ts directos ffmpeg abortaba en <1s con "Option

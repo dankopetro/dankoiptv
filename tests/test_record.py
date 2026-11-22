@@ -197,5 +197,74 @@ class LiveStreamTest(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class LiveBufferMarkTest(unittest.TestCase):
+    """Marcas de buffer para grabación exacta (sin red)."""
+
+    def test_mark_elapsed(self):
+        buf = record.LiveBuffer("http://x", "t", max_minutes=30)
+        buf.start_wall = time.time() - 10
+        m = buf.mark()
+        self.assertGreaterEqual(m, 9.5)
+        self.assertLessEqual(m, 11.0)
+        self.assertAlmostEqual(buf.elapsed(), m, delta=0.5)
+
+    def test_ready_false_without_file(self):
+        buf = record.LiveBuffer("http://x", "t")
+        self.assertFalse(buf.ready())
+        buf._active = True
+        buf.proc = type("P", (), {"poll": lambda self: None})()
+        buf.ts_path = "/tmp/no-existe-danko.ts"
+        self.assertFalse(buf.ready())
+
+    def test_cut_between_keeps_source(self):
+        if not record.ffmpeg_ok():
+            self.skipTest("ffmpeg no instalado")
+        tmp = tempfile.mkdtemp(prefix="dankobuf_")
+        try:
+            ts = os.path.join(tmp, "buf.ts")
+            subprocess.run(
+                ["ffmpeg", "-nostats", "-loglevel", "error",
+                 "-f", "lavfi", "-i", "testsrc=size=160x120:rate=30",
+                 "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
+                 "-t", "4", "-c:v", "libx264", "-preset", "ultrafast",
+                 "-g", "30", "-pix_fmt", "yuv420p", "-c:a", "aac", "-y", ts],
+                capture_output=True, timeout=60)
+            buf = record.LiveBuffer("http://x", "t")
+            buf.ts_path = ts
+            buf.start_wall = time.time() - 4
+            buf._active = True
+            out = os.path.join(tmp, "out.mp4")
+            final = buf.cut_between(1.0, 3.0, out, offset_s=0.0)
+            self.assertEqual(final, out)
+            self.assertTrue(os.path.isfile(out))
+            self.assertTrue(os.path.isfile(ts), "cut_between no debe borrar el buffer")
+            d = record.duration_seconds(out)
+            self.assertGreater(d, 1.2)
+            self.assertLess(d, 2.8)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_trim_keep_source(self):
+        if not record.ffmpeg_ok():
+            self.skipTest("ffmpeg no instalado")
+        tmp = tempfile.mkdtemp(prefix="dankokeep_")
+        try:
+            ts = os.path.join(tmp, "b.ts")
+            subprocess.run(
+                ["ffmpeg", "-nostats", "-loglevel", "error",
+                 "-f", "lavfi", "-i", "testsrc=size=160x120:rate=30",
+                 "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
+                 "-t", "3", "-c:v", "libx264", "-preset", "ultrafast",
+                 "-g", "30", "-pix_fmt", "yuv420p", "-c:a", "aac", "-y", ts],
+                capture_output=True, timeout=60)
+            mp4 = os.path.join(tmp, "c.mp4")
+            final = record.trim_and_remux(ts, mp4, start_s=0.5, keep_s=1.0, keep_source=True)
+            self.assertEqual(final, mp4)
+            self.assertTrue(os.path.isfile(mp4))
+            self.assertTrue(os.path.isfile(ts), "keep_source debe preservar el ts")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()

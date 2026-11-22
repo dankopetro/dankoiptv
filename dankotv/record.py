@@ -16,6 +16,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 import time
 
 log = logging.getLogger("dankotv.record")
@@ -224,13 +225,14 @@ def duration_seconds(ts_path):
         return 0.0
 
 
-def trim_and_remux(ts_path, mp4_path, start_s, keep_s):
-    """Corta [start_s, start_s+keep_s) del .ts grabado y lo remuxe a .mp4.
+def trim_and_remux(ts_path, mp4_path, start_s, keep_s, keep_source=False):
+    """Corta [start_s, start_s+keep_s) del .ts y lo remuxe a .mp4.
 
     Lección 21/11/2026: cortar un .ts directo a .mp4 con -c copy PIERDE el
-    video (el PTS del video arranca en 1.4s y el audio en 0; ffmpeg descarta
-    el video del primer GOP). Solución: cortar a un .ts intermedio
-    (mismo formato, PTS consistentes) y de ahí remux a .mp4.
+    video (PTS video arranca en 1.4s y audio en 0; ffmpeg descarta el
+    primer GOP). Solución: cortar a un .ts intermedio (mismo formato, PTS
+    consistentes) y de ahí remux a .mp4.
+    keep_source=True: no borra ts_path (para cortes desde el buffer vivo).
     Devuelve la ruta final o lanza."""
     if not os.path.isfile(ts_path) or os.path.getsize(ts_path) == 0:
         raise RuntimeError("El archivo de grabación no existe o está vacío.")
@@ -253,6 +255,8 @@ def trim_and_remux(ts_path, mp4_path, start_s, keep_s):
            "-i", cut_ts, "-codec", "copy", "-y", mp4_path]
     r2 = subprocess.run(cmd, timeout=300, capture_output=True)
     for f in (cut_ts, ts_path):
+        if f == ts_path and keep_source:
+            continue
         try:
             os.remove(f)
         except OSError:
@@ -286,34 +290,25 @@ class LiveBuffer:
         self.ts_path = None
         self.start_wall = None
         self._active = False
+        self.recording = False  # True mientras hay un recorte pendiente
 
     def start(self):
+        self._active = True
+        self._open()
+        threading.Thread(target=self._monitor, daemon=True).start()
+
+    def _open(self):
         os.makedirs(BUFFER_DIR, exist_ok=True)
         stamp = time.strftime("%Y%m%d_%H%M%S")
         base = os.path.join(BUFFER_DIR, f"{stamp}_{safe_name(self.title)}")
         self.ts_path = base + ".ts"
         self.start_wall = time.time()
-        self._active = True
         cmd = build_cmd(self.url, self.ts_path, live=True)
         log.info("BUFFER start: %s (máx %s min)", self.ts_path, self.max_minutes)
         _append_rec_log(f"BUFFER start max={self.max_minutes} url={self.url}\n")
         self.proc = _spawn(cmd, REC_LOG)
-        threading.Thread(target=self._monitor, daemon=True).start()
 
-    def _monitor(self):
-        while self._active and self.proc and self.proc.poll() is None:
-            time.sleep(5)
-            if self.start_wall and (time.time() - self.start_wall) > self.max_minutes * 60:
-                # Ring buffer: reinicia (borra lo más viejo)
-                try:
-                    self.stop()
-                except Exception:
-                    pass
-                if self._active:
-                    self.start()
-
-    def stop(self):
-        self._active = False
+    def _stop_proc_and_file(self):
         if self.proc:
             try:
                 self.proc.terminate()
@@ -331,6 +326,24 @@ class LiveBuffer:
                 pass
             self.ts_path = None
 
+    def _monitor(self):
+        while self._active and self.proc and self.proc.poll() is None:
+            time.sleep(5)
+            if self.recording:
+                continue  # no reiniciar mientras se graba desde el buffer
+            if self.start_wall and (time.time() - self.start_wall) > self.max_minutes * 60:
+                try:
+                    self._stop_proc_and_file()
+                    if self._active:
+                        self._open()
+                except Exception:
+                    log.warning("BUFFER restart falló", exc_info=True)
+                    break
+
+    def stop(self):
+        self._active = False
+        self._stop_proc_and_file()
+
     def is_active(self):
         return self._active and self.proc is not None and self.proc.poll() is None
 
@@ -346,7 +359,7 @@ class LiveBuffer:
             raise RuntimeError("Buffer vacío (todavía no hay datos).")
         keep = min(float(minutes) * 60.0, dur)
         start = max(0.0, dur - keep)
-        return trim_and_remux(self.ts_path, out_mp4, start, keep)
+        return trim_and_remux(self.ts_path, out_mp4, start, keep, keep_source=True)
 
     def save_range(self, start_ago_s, end_ago_s, out_mp4, dur=None):
         """Guarda un rango del buffer: desde `start_ago_s` segundos atrás
@@ -365,7 +378,7 @@ class LiveBuffer:
         end = min(dur, dur - float(end_ago_s))
         if end <= start:
             raise RuntimeError("Rango vacío (start_ago debe ser > end_ago).")
-        return trim_and_remux(self.ts_path, out_mp4, start, end - start)
+        return trim_and_remux(self.ts_path, out_mp4, start, end - start, keep_source=True)
 
     def save_range_abs(self, start_s, end_s, out_mp4):
         """Guarda [start_s, end_s) en segundos absolutos del buffer.
@@ -379,4 +392,58 @@ class LiveBuffer:
         end = max(start, min(end_s, dur))
         if end <= start:
             raise RuntimeError("Rango vacío.")
-        return trim_and_remux(self.ts_path, out_mp4, start, end - start)
+        return trim_and_remux(self.ts_path, out_mp4, start, end - start, keep_source=True)
+
+    # --- marcas exactas para grabación click-to-click ---
+
+    def elapsed(self):
+        """Segundos desde que arrancó este buffer (pared). 0 si inactivo."""
+        if not self.start_wall:
+            return 0.0
+        return max(0.0, time.time() - self.start_wall)
+
+    def mark(self):
+        """Marca la posición actual del buffer. Devuelve segundos absolutos
+        desde el inicio del buffer (pared). Usar con cut_between."""
+        return self.elapsed()
+
+    def ready(self, min_secs=0.5):
+        """True cuando el buffer tiene datos reales para cortar."""
+        if not self.is_active() or not self.ts_path:
+            return False
+        if not os.path.isfile(self.ts_path) or os.path.getsize(self.ts_path) < 32_000:
+            return False
+        return self.duration() >= min_secs
+
+    def wait_ready(self, timeout=12.0, min_secs=0.5):
+        """Espera a que el buffer tenga datos. Devuelve (ok, delay_s)."""
+        t0 = time.time()
+        deadline = t0 + timeout
+        while time.time() < deadline:
+            if self.ready(min_secs=min_secs):
+                return True, time.time() - t0
+            if not self._active:
+                return False, time.time() - t0
+            time.sleep(0.2)
+        return self.ready(min_secs=min_secs), time.time() - t0
+
+    def cut_between(self, start_mark, end_mark, out_mp4, offset_s=0.0):
+        """Corta [start_mark, end_mark) (marcas de elapsed/mark) del buffer
+        y guarda .mp4. offset_s compensa retraso conocido (positivo = el
+        contenido real va adelantado respecto a la marca; se suma al inicio
+        y al fin para que el archivo coincida con lo que el usuario vio)."""
+        if not self.ts_path or not os.path.isfile(self.ts_path):
+            raise RuntimeError("No hay buffer activo.")
+        dur = self.duration()
+        if dur <= 0:
+            raise RuntimeError("Buffer vacío (todavía no hay datos).")
+        off = float(offset_s or 0.0)
+        start = max(0.0, float(start_mark) + off)
+        end = min(dur, float(end_mark) + off)
+        if end <= start:
+            # Si el offset empujó el fin fuera, intentar sin pasarse del dur
+            end = min(dur, max(start + 0.1, float(end_mark)))
+        if end <= start:
+            raise RuntimeError("Rango vacío en el buffer.")
+        keep = end - start
+        return trim_and_remux(self.ts_path, out_mp4, start, keep, keep_source=True)
