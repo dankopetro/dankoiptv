@@ -4,7 +4,7 @@ import logging
 import threading
 import time
 from PyQt6.QtCore import Qt, QEvent, QTimer, pyqtSignal
-from PyQt6.QtGui import QAction, QActionGroup, QCursor, QGuiApplication, QKeySequence, QShortcut
+from PyQt6.QtGui import QAction, QActionGroup, QCursor, QGuiApplication, QIcon, QKeySequence, QShortcut, QPixmap
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QListWidget,
     QLineEdit, QPushButton, QLabel, QSplitter, QFrame, QComboBox,
@@ -77,6 +77,7 @@ class MainWindow(QMainWindow):
         self._playing_title = ""
         self._rec_since_save = False  # True tras "Guardar últimos X min"
         self._apply_window_chrome()
+        self.setWindowIcon(QIcon(QPixmap(os.path.join(os.path.dirname(__file__), "assets", "dankotv.svg"))))
         self._build_ui()
         self.setStatusBar(QStatusBar())
         self.set_list(self.entry, self.channels, groups or [])
